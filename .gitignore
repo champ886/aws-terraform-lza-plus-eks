@@ -24,6 +24,8 @@ terraform.tfvars
 *.tfstate.backup
 
 # -----------------------------------------------
-# SAVED PLAN FILES
+# kubectl and awscliv2
 # -----------------------------------------------
-tfplan
+environments/dev/eks/awscliv2.zip
+environments/dev/eks/kubectl
+
