@@ -56,11 +56,13 @@ variable "approved_regions" {
 variable "workload_dev_account_name" {
   description = "Name of the workload dev account"
   type        = string
+  default     = "dev-workload-account"
 }
 
 variable "workload_dev_account_email" {
   description = "Email for the workload dev account"
   type        = string
+  default = "aws-dev-workload@algorhythm.au"
 }
 
 # -----------------------------------------------
@@ -75,6 +77,7 @@ variable "workload_prod_account_name" {
 variable "workload_prod_account_email" {
   description = "Email for the workload prod account"
   type        = string
+  default     = "aws-prod-workload@algorhythm.au"
 }
 
 # -----------------------------------------------
@@ -84,11 +87,13 @@ variable "workload_prod_account_email" {
 variable "security_account_name" {
   description = "Name of the security account"
   type        = string
+  default     = "security-account"
 }
 
 variable "security_account_email" {
   description = "Email for the security account"
   type        = string
+  default     = "aws-security@algorhythm.au"
 }
 
 # -----------------------------------------------
