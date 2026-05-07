@@ -5,5 +5,6 @@ terraform {
     region         = "ap-southeast-2"
     dynamodb_table = "tf-locks"
     encrypt        = true
+    role_arn       = "arn:aws:iam::501562869247:role/TerraformStateRole"
   }
 }

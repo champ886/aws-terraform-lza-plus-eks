@@ -79,3 +79,16 @@ module "iam_analyzer" {
 
   depends_on = [module.organization]
 }
+
+# -----------------------------------------------
+# TERRAFORM STATE ROLE
+# Centralised role allowing all child accounts
+# to access shared S3 state and DynamoDB locks
+# -----------------------------------------------
+module "terraform_state_role" {
+  source            = "../../modules/terraform-state-role"
+  environment       = var.environment
+  dev_account_id    = var.workload_dev_account_id
+  prod_account_id   = var.workload_prod_account_id
+  state_bucket_name = var.state_bucket_name
+}

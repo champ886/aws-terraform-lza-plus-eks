@@ -99,3 +99,21 @@ variable "analyzer_type" {
   type        = string
   default     = "ORGANIZATION"
 }
+
+variable "workload_dev_account_id" {
+  description = "Dev workload account ID"
+  type        = string
+  default     = "435321828725"
+}
+
+variable "workload_prod_account_id" {
+  description = "Prod workload account ID"
+  type        = string
+  default     = "774386608951"
+}
+
+variable "state_bucket_name" {
+  description = "S3 bucket for Terraform state"
+  type        = string
+  default     = "tf-state-landing-zone-champ-001"
+}
