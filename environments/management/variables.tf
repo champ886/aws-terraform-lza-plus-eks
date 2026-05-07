@@ -72,6 +72,7 @@ variable "workload_dev_account_email" {
 variable "workload_prod_account_name" {
   description = "Name of the workload prod account"
   type        = string
+  default     = "prod-workload-account"
 }
 
 variable "workload_prod_account_email" {
