@@ -34,6 +34,22 @@ data "aws_caller_identity" "current" {
 }
 
 # -----------------------------------------------
+# ECR PULL THROUGH CACHE
+# Step 0 — deploy before EKS so images are
+# available when nodes first start pulling
+# terraform apply -target=module.ecr_pull_through
+# -----------------------------------------------
+module "ecr_pull_through" {
+  source = "../../../modules/ecr-pull-through"
+
+  providers = {
+    aws.workload = aws.workload
+  }
+
+  environment = var.environment
+}
+
+# -----------------------------------------------
 # EKS CLUSTER MODULE
 # Step 1 — deploy this first on its own
 # terraform apply -target=module.eks

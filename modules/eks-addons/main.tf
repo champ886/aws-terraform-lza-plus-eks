@@ -142,7 +142,15 @@ resource "helm_release" "cluster_autoscaler" {
   namespace  = "kube-system"
   version    = "9.29.0"
   
+  set {
+    name  = "image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/registry-k8s-io/autoscaling/cluster-autoscaler"
+  }
 
+  set {
+    name  = "image.tag"
+    value = "v1.27.1"
+  }
   set {
     name  = "autoDiscovery.clusterName"
     value = var.cluster_name
@@ -242,6 +250,30 @@ resource "helm_release" "kubecost" {
   namespace  = kubernetes_namespace.kubecost.metadata[0].name
   version    = "1.108.0"
 
+  set {
+    name  = "cost-analyzer.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/kubecost/cost-model"
+  }
+
+  set {
+    name  = "frontend.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/kubecost/frontend"
+  }
+
+  set {
+    name  = "prometheus.server.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/prom/prometheus"
+  }
+
+  set {
+    name  = "prometheus.nodeExporter.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/prom/node-exporter"
+  }
+
+  set {
+    name  = "grafana.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/grafana/grafana"
+  }
   set {
     name  = "kubecostToken"
     value = ""
