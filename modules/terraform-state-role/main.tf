@@ -78,3 +78,35 @@ resource "aws_iam_role_policy" "terraform_state" {
     ]
   })
 }
+
+# -----------------------------------------------
+# S3 BUCKET POLICY
+# Allows TerraformStateRole to access state bucket
+# cross-account from dev and prod
+# -----------------------------------------------
+resource "aws_s3_bucket_policy" "terraform_state" {
+  bucket = var.state_bucket_name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowTerraformStateRole"
+        Effect = "Allow"
+        Principal = {
+          AWS = aws_iam_role.terraform_state.arn
+        }
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::${var.state_bucket_name}",
+          "arn:aws:s3:::${var.state_bucket_name}/*"
+        ]
+      }
+    ]
+  })
+}
