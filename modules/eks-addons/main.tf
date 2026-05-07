@@ -141,6 +141,7 @@ resource "helm_release" "cluster_autoscaler" {
   chart      = "cluster-autoscaler"
   namespace  = "kube-system"
   version    = "9.29.0"
+  
 
   set {
     name  = "autoDiscovery.clusterName"
@@ -196,6 +197,9 @@ resource "helm_release" "cluster_autoscaler" {
     name  = "resources.limits.memory"
     value = "300Mi"
   }
+
+  timeout = 600    
+  wait    = true   
 
   depends_on = [
     aws_eks_addon.vpc_cni,
@@ -298,6 +302,9 @@ resource "helm_release" "kubecost" {
     value = var.aws_account_id
   }
 
+  timeout = 600    
+  wait    = true  
+   
   depends_on = [
     aws_eks_addon.vpc_cni,
     aws_eks_addon.coredns,
