@@ -64,3 +64,16 @@ variable "node_max_size" {
   type    = number
   default = 5
 }
+
+variable "docker_hub_username" {
+  description = "Docker Hub username for ECR pull through cache"
+  type        = string
+  default     = ""
+}
+
+variable "docker_hub_token" {
+  description = "Docker Hub access token for ECR pull through cache"
+  type        = string
+  sensitive   = true
+  default     = ""
+}

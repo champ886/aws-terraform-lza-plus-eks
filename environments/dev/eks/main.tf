@@ -46,8 +46,10 @@ module "ecr_pull_through" {
     aws.workload = aws.workload
   }
 
-  environment = var.environment
-}
+  environment         = var.environment
+  docker_hub_username = var.docker_hub_username
+  docker_hub_token    = var.docker_hub_token
+}  
 
 # -----------------------------------------------
 # EKS CLUSTER MODULE
