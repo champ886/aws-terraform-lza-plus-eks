@@ -176,6 +176,7 @@ resource "helm_release" "cluster_autoscaler" {
     name  = "frontend.image.repository"
     value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/kubecost/frontend"
   }
+  
   timeout = 600    
   wait    = true   
 
@@ -222,12 +223,22 @@ resource "helm_release" "kubecost" {
 
   set {
     name  = "cost-analyzer.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/kubecost/cost-model"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/gcr/kubecost1/cost-model"
   }
 
   set {
     name  = "frontend.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/kubecost/frontend"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/gcr/kubecost1/frontend"
+  }
+
+  set {
+    name  = "grafana.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/grafana/grafana"
+  }
+
+  set {
+    name  = "grafana.sidecar.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/kiwigrid/k8s-sidecar"
   }
 
   set {
@@ -241,8 +252,8 @@ resource "helm_release" "kubecost" {
   }
 
   set {
-    name  = "grafana.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/grafana/grafana"
+    name  = "prometheus.configmapReload.prometheus.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/quay/prometheus-operator/prometheus-config-reloader"
   }
   set {
     name  = "kubecostToken"
