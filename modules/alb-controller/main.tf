@@ -151,8 +151,8 @@ resource "aws_iam_role_policy_attachment" "alb_controller" {
 # ALB CONTROLLER HELM CHART
 # Deployed after core addons are confirmed running
 # Manages ALB and NLB for Kubernetes ingress
-# Webhook registers with Kubernetes to intercept
-# Service and Ingress resource creation
+# Image pulled via ECR pull through cache
+# (public.ecr.aws) — no internet access needed
 # -----------------------------------------------
 resource "helm_release" "alb_controller" {
   name       = "aws-load-balancer-controller"
@@ -160,6 +160,9 @@ resource "helm_release" "alb_controller" {
   chart      = "aws-load-balancer-controller"
   namespace  = "kube-system"
   version    = "1.6.2"
+  timeout    = 600
+  wait       = true
+  wait_for_jobs = true
 
   set {
     name  = "clusterName"
@@ -179,6 +182,16 @@ resource "helm_release" "alb_controller" {
   set {
     name  = "vpcId"
     value = var.vpc_id
+  }
+
+  # -----------------------------------------------
+  # ECR PULL THROUGH CACHE IMAGE
+  # Routes image pull via private ECR endpoint
+  # No internet or NAT gateway required
+  # -----------------------------------------------
+  set {
+    name  = "image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/ecr-public/eks/aws-load-balancer-controller"
   }
 
   # -----------------------------------------------
@@ -204,17 +217,6 @@ resource "helm_release" "alb_controller" {
     name  = "resources.limits.memory"
     value = "256Mi"
   }
-
-  # -----------------------------------------------
-  # WAIT FOR ROLLOUT
-  # Ensures webhook is ready before Terraform
-  # considers the release complete
-  # Prevents downstream installs being blocked
-  # by a half-ready webhook
-  # -----------------------------------------------
-  wait             = true
-  wait_for_jobs    = true
-  timeout          = 300
 
   depends_on = [aws_iam_role_policy_attachment.alb_controller]
 }

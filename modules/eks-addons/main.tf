@@ -141,45 +141,73 @@ resource "helm_release" "cluster_autoscaler" {
   chart      = "cluster-autoscaler"
   namespace  = "kube-system"
   version    = "9.29.0"
-  
+  timeout    = 600
+  wait       = true
+
   set {
-    name  = "global.imageRegistry"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub"
+    name  = "image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/registry-k8s-io/autoscaling/cluster-autoscaler"
   }
 
   set {
-    name  = "grafana.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/grafana/grafana"
+    name  = "image.tag"
+    value = "v1.27.1"
   }
 
   set {
-    name  = "grafana.sidecar.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/kiwigrid/k8s-sidecar"
+    name  = "autoDiscovery.clusterName"
+    value = var.cluster_name
   }
 
   set {
-    name  = "prometheus.server.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/prom/prometheus"
+    name  = "awsRegion"
+    value = var.aws_region
   }
 
   set {
-    name  = "prometheus.nodeExporter.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/prom/node-exporter"
+    name  = "rbac.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+    value = aws_iam_role.cluster_autoscaler.arn
   }
 
   set {
-    name  = "cost-analyzer.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/ecr-public/kubecost/cost-model"
+    name  = "rbac.serviceAccount.name"
+    value = "cluster-autoscaler"
   }
 
   set {
-    name  = "frontend.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/ecr-public/kubecost/frontend"
+    name  = "extraArgs.scale-down-utilization-threshold"
+    value = "0.5"
   }
+
+  set {
+    name  = "extraArgs.scale-down-delay-after-add"
+    value = "5m"
   }
-  
-  timeout = 600    
-  wait    = true   
+
+  set {
+    name  = "extraArgs.scale-down-unneeded-time"
+    value = "5m"
+  }
+
+  set {
+    name  = "resources.requests.cpu"
+    value = "100m"
+  }
+
+  set {
+    name  = "resources.requests.memory"
+    value = "300Mi"
+  }
+
+  set {
+    name  = "resources.limits.cpu"
+    value = "100m"
+  }
+
+  set {
+    name  = "resources.limits.memory"
+    value = "300Mi"
+  }
 
   depends_on = [
     aws_eks_addon.vpc_cni,
@@ -221,15 +249,17 @@ resource "helm_release" "kubecost" {
   chart      = "cost-analyzer"
   namespace  = kubernetes_namespace.kubecost.metadata[0].name
   version    = "1.108.0"
+  timeout    = 600
+  wait       = true
 
   set {
     name  = "cost-analyzer.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/gcr/kubecost1/cost-model"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/ecr-public/kubecost/cost-model"
   }
 
   set {
     name  = "frontend.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/gcr/kubecost1/frontend"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/ecr-public/kubecost/frontend"
   }
 
   set {
@@ -256,6 +286,7 @@ resource "helm_release" "kubecost" {
     name  = "prometheus.configmapReload.prometheus.image.repository"
     value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/quay/prometheus-operator/prometheus-config-reloader"
   }
+
   set {
     name  = "kubecostToken"
     value = ""
@@ -316,9 +347,6 @@ resource "helm_release" "kubecost" {
     value = var.aws_account_id
   }
 
-  timeout = 600    
-  wait    = true  
-   
   depends_on = [
     aws_eks_addon.vpc_cni,
     aws_eks_addon.coredns,
