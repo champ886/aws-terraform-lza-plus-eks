@@ -59,23 +59,24 @@ At moderate scale, this architecture is **cheaper than NAT Gateway** while being
 
 ## Architecture Summary
 
+```
 Worker Nodes
 │
 ├──▶ VPC Interface Endpoints (PrivateLink)
-│       ├── eks         → EKS control plane API
-│       ├── ec2         → Node registration
-│       ├── sts         → IRSA token exchange
-│       ├── ecr.api     → ECR authentication
-│       ├── ecr.dkr     → Image pulls
-│       ├── s3 (Gateway)→ Image layer pulls (free)
-│       └── autoscaling → Cluster Autoscaler
+│       ├── eks          → EKS control plane API
+│       ├── ec2          → Node registration
+│       ├── sts          → IRSA token exchange
+│       ├── ecr.api      → ECR authentication
+│       ├── ecr.dkr      → Image pulls
+│       ├── s3 (Gateway) → Image layer pulls (free)
+│       └── autoscaling  → Cluster Autoscaler
 │
 └──▶ Private ECR (Pull Through Cache)
-├── registry.k8s.io  → cluster-autoscaler images
-├── public.ecr.aws   → ALB controller, Kubecost
-├── hub.docker.com   → Grafana, Prometheus, exporters
-└── quay.io          → prometheus-config-reloader
-
+        ├── registry.k8s.io  → cluster-autoscaler images
+        ├── public.ecr.aws   → ALB controller, Kubecost
+        ├── hub.docker.com   → Grafana, Prometheus, exporters
+        └── quay.io          → prometheus-config-reloader
+```
 No traffic leaves the AWS network. No internet gateway required on node subnets.
 
 ---
