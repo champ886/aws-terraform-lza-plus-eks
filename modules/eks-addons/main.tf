@@ -253,12 +253,26 @@ resource "helm_release" "kubecost" {
   wait       = true
 
   set {
-    name  = "cost-analyzer.image.repository"
+    name  = "global.storageClass"
+    value = "gp2"
+  }
+
+  set {
+    name  = "prometheus.server.persistentVolume.storageClass"
+    value = "gp2"
+  }
+
+  set {
+    name  = "persistentVolume.storageClass"
+    value = "gp2"
+  }
+  set {
+    name  = "kubecostModel.image"
     value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/ecr-public/kubecost/cost-model"
   }
 
   set {
-    name  = "frontend.image.repository"
+    name  = "kubecostFrontend.image"
     value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/ecr-public/kubecost/frontend"
   }
 
@@ -351,6 +365,66 @@ resource "helm_release" "kubecost" {
     aws_eks_addon.vpc_cni,
     aws_eks_addon.coredns,
     aws_eks_addon.kube_proxy,
+    aws_eks_addon.ebs_csi,
     kubernetes_namespace.kubecost
   ]
+}
+
+# -----------------------------------------------
+# EBS CSI DRIVER IAM ROLE
+# IRSA scoped to ebs-csi-controller service account
+# Required to create and manage EBS volumes
+# Kubecost Prometheus requires PersistentVolumes
+# -----------------------------------------------
+resource "aws_iam_role" "ebs_csi" {
+  provider = aws.workload
+  name     = "${var.cluster_name}-ebs-csi-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = var.cluster_oidc_provider_arn
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${replace(var.cluster_oidc_issuer_url, "https://", "")}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
+          "${replace(var.cluster_oidc_issuer_url, "https://", "")}:aud" = "sts.amazonaws.com"
+        }
+      }
+    }]
+  })
+
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ebs_csi" {
+  provider   = aws.workload
+  role       = aws_iam_role.ebs_csi.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+}
+
+# -----------------------------------------------
+# EBS CSI DRIVER ADDON
+# Required for PersistentVolumeClaims
+# Kubecost Prometheus needs EBS storage
+# -----------------------------------------------
+resource "aws_eks_addon" "ebs_csi" {
+  provider                    = aws.workload
+  cluster_name                = var.cluster_name
+  addon_name                  = "aws-ebs-csi-driver"
+  service_account_role_arn    = aws_iam_role.ebs_csi.arn
+  resolve_conflicts_on_create = "OVERWRITE"
+
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+
+  depends_on = [aws_iam_role_policy_attachment.ebs_csi]
 }
