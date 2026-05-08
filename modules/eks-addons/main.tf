@@ -143,69 +143,39 @@ resource "helm_release" "cluster_autoscaler" {
   version    = "9.29.0"
   
   set {
-    name  = "image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/registry-k8s-io/autoscaling/cluster-autoscaler"
+    name  = "global.imageRegistry"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub"
   }
 
   set {
-    name  = "image.tag"
-    value = "v1.27.1"
-  }
-  set {
-    name  = "autoDiscovery.clusterName"
-    value = var.cluster_name
+    name  = "grafana.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/grafana/grafana"
   }
 
   set {
-    name  = "awsRegion"
-    value = var.aws_region
+    name  = "grafana.sidecar.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/kiwigrid/k8s-sidecar"
   }
 
   set {
-    name  = "rbac.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.cluster_autoscaler.arn
+    name  = "prometheus.server.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/prom/prometheus"
   }
 
   set {
-    name  = "rbac.serviceAccount.name"
-    value = "cluster-autoscaler"
+    name  = "prometheus.nodeExporter.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/prom/node-exporter"
   }
 
   set {
-    name  = "extraArgs.scale-down-utilization-threshold"
-    value = "0.5"
+    name  = "cost-analyzer.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/kubecost/cost-model"
   }
 
   set {
-    name  = "extraArgs.scale-down-delay-after-add"
-    value = "5m"
+    name  = "frontend.image.repository"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/kubecost/frontend"
   }
-
-  set {
-    name  = "extraArgs.scale-down-unneeded-time"
-    value = "5m"
-  }
-
-  set {
-    name  = "resources.requests.cpu"
-    value = "100m"
-  }
-
-  set {
-    name  = "resources.requests.memory"
-    value = "300Mi"
-  }
-
-  set {
-    name  = "resources.limits.cpu"
-    value = "100m"
-  }
-
-  set {
-    name  = "resources.limits.memory"
-    value = "300Mi"
-  }
-
   timeout = 600    
   wait    = true   
 
