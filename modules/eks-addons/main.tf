@@ -169,12 +169,13 @@ resource "helm_release" "cluster_autoscaler" {
 
   set {
     name  = "cost-analyzer.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/kubecost/cost-model"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/ecr-public/kubecost/cost-model"
   }
 
   set {
     name  = "frontend.image.repository"
-    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/kubecost/frontend"
+    value = "435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/ecr-public/kubecost/frontend"
+  }
   }
   
   timeout = 600    

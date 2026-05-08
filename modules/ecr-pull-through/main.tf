@@ -46,11 +46,6 @@ resource "aws_ecr_pull_through_cache_rule" "quay" {
   upstream_registry_url = "quay.io"
 }
 # gcr.io — Google Container Registry (Kubecost images)
-resource "aws_ecr_pull_through_cache_rule" "gcr" {
-  provider              = aws.workload
-  ecr_repository_prefix = "gcr"
-  upstream_registry_url = "gcr.io"
-}
 
 # -----------------------------------------------
 # DOCKER HUB CREDENTIALS
