@@ -123,5 +123,5 @@ module "alb_controller" {
   cluster_oidc_issuer_url   = module.eks.cluster_oidc_issuer_url
   cluster_oidc_provider_arn = module.eks.cluster_oidc_provider_arn
 
-  depends_on = [module.eks]
+  depends_on = [module.eks_addons]
 }
