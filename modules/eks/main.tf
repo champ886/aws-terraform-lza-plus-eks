@@ -157,6 +157,31 @@ resource "aws_iam_role_policy_attachment" "node_ecr_policy" {
 }
 
 # -----------------------------------------------
+# NODE GROUP ECR PULL THROUGH CACHE POLICY
+# AmazonEC2ContainerRegistryReadOnly does not
+# include CreateRepository which is required for
+# ECR pull through cache on first image pull
+# -----------------------------------------------
+resource "aws_iam_role_policy" "node_ecr_pull_through" {
+  name = "${var.cluster_name}-ecr-pull-through-policy"
+  role = aws_iam_role.node_group.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:CreateRepository",
+          "ecr:BatchImportUpstreamImage"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# -----------------------------------------------
 # NODE GROUP SECURITY GROUP
 # Controls traffic between nodes and control plane
 # -----------------------------------------------
