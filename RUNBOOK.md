@@ -1,149 +1,108 @@
 # RUNBOOK — Issues Encountered & Architecture Notes
 
-This document captures the detailed architecture decisions made in this repo and every significant issue encountered during the build. It exists so the next person (or future you) doesn't repeat the same debugging sessions.
+Hard-won notes from building this repo. Read before you touch anything.
 
 ---
 
-## High Level Architecture
+## Architecture Quick Reference
 
-### 1. Worker Nodes → EKS Control Plane (Private Connectivity)
+### VPC Endpoints (replaces NAT Gateway)
 
-**Module:** `modules/vpc-endpoints/`
+Seven endpoints. All traffic stays on the AWS private network.
 
-Worker nodes communicate with the EKS control plane and AWS APIs entirely via **VPC Interface Endpoints** (AWS PrivateLink). There is no NAT Gateway and no internet route on the node subnets.
+| Endpoint | Purpose |
+|---|---|
+| `eks` | Nodes → control plane API |
+| `ec2` | Node registration |
+| `sts` | IRSA token exchange |
+| `ecr.api` | ECR authentication |
+| `ecr.dkr` | Image pulls |
+| `s3` *(Gateway, free)* | ECR image layer pulls |
+| `autoscaling` | Cluster Autoscaler scale operations |
 
-| Endpoint | Service | Purpose |
-|---|---|---|
-| `com.amazonaws.ap-southeast-2.eks` | EKS | Nodes communicate with control plane API privately |
-| `com.amazonaws.ap-southeast-2.ec2` | EC2 | Node registration with the cluster |
-| `com.amazonaws.ap-southeast-2.sts` | STS | IRSA token exchange for pod IAM roles |
-| `com.amazonaws.ap-southeast-2.ecr.api` | ECR | ECR authentication |
-| `com.amazonaws.ap-southeast-2.ecr.dkr` | ECR | Container image pulls |
-| `com.amazonaws.ap-southeast-2.s3` *(Gateway)* | S3 | ECR image layer pulls — Gateway type, no hourly charge |
-| `com.amazonaws.ap-southeast-2.autoscaling` | Autoscaling | Cluster Autoscaler scale-in/out operations |
+### ECR Pull Through Cache
 
-All traffic stays within the AWS private network via PrivateLink. No internet routing required.
+Nodes never hit the internet. ECR fetches upstream on first pull and caches indefinitely.
 
----
-
-### 2. ECR Pull Through Cache
-
-**Module:** `modules/ecr-pull-through/`
-
-Rather than pulling images directly from public registries (which would require internet access and a NAT Gateway), nodes pull from **private ECR repositories** that act as a pull-through cache. ECR fetches from upstream on the first pull and caches the image indefinitely.
-
-| ECR Prefix | Upstream Source | Used By |
+| Prefix | Upstream | Used by |
 |---|---|---|
 | `registry-k8s-io` | registry.k8s.io | cluster-autoscaler |
-| `ecr-public` | public.ecr.aws | ALB controller, Kubecost cost-model, Kubecost frontend |
-| `docker-hub` | hub.docker.com | Grafana, Prometheus, node-exporter, kiwigrid sidecar |
+| `ecr-public` | public.ecr.aws | ALB controller, Kubecost |
+| `docker-hub` | hub.docker.com | Grafana, Prometheus, exporters |
 | `quay` | quay.io | prometheus-config-reloader |
-
-Nodes never touch the internet. ECR handles upstream fetching automatically.
 
 ---
 
-## Issues Encountered
+## Issues & Fixes
 
 ### ECR & Images
 
-**`gcr.io` is not supported by ECR Pull Through Cache**
-ECR pull-through supports a fixed list of upstream registries. `gcr.io` is not on it. Kubecost's default Helm chart points its cost-model and frontend images at `gcr.io/kubecost1/` — these had to be explicitly overridden to use `public.ecr.aws/kubecost` instead.
+**`gcr.io` is not supported by ECR pull-through.** Kubecost's default chart pulls from `gcr.io/kubecost1/` — override to `public.ecr.aws/kubecost` in Helm values.
 
-**Node IAM role was missing pull-through cache permissions**
-ECR pull-through cache requires the node IAM role to have `ecr:CreateRepository` and `ecr:BatchImportUpstreamImage`. Without these, the first pull of any image fails silently — the pod enters `ImagePullBackOff` with no obvious reason why.
-
-Required addition to the node instance profile:
+**Node IAM role needs two extra permissions.** Without these, first pulls fail silently with `ImagePullBackOff`:
 ```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "ecr:CreateRepository",
-    "ecr:BatchImportUpstreamImage"
-  ],
-  "Resource": "*"
-}
+"Action": ["ecr:CreateRepository", "ecr:BatchImportUpstreamImage"]
 ```
 
-**Kubecost Helm value names were wrong**
-The Helm values `cost-analyzer.image.repository` and `frontend.image.repository` do not exist in the Kubecost chart. The correct keys are:
-- `kubecostModel.image` — for the cost-model container
-- `kubecostFrontend.image` — for the frontend container
+**Kubecost Helm value names.** The values `cost-analyzer.image.repository` and `frontend.image.repository` don't exist. Use:
+- `kubecostModel.image`
+- `kubecostFrontend.image`
 
-**Grafana sidecar container needed an ECR override**
-The `kube-prometheus-stack` chart injects a `kiwigrid/k8s-sidecar` container into the Grafana pod automatically. This is easy to miss. The sidecar image also needs to be overridden to pull from ECR, otherwise it will fail with `ImagePullBackOff` even after the main Grafana image is correctly redirected.
+**Grafana injects a sidecar you'll forget.** `kube-prometheus-stack` adds `kiwigrid/k8s-sidecar` automatically. Override its image to ECR or it will `ImagePullBackOff` even after Grafana itself is fixed.
 
 ---
 
 ### Terraform State
 
-**DynamoDB lock table only existed in the management account**
-The `tf-locks` DynamoDB table was only created in the management account. Child accounts couldn't acquire a state lock when running Terraform in their own context. Either a table per account or cross-account DynamoDB access is required.
+**DynamoDB lock table must be cross-account accessible.** `tf-locks` was only in the management account. Child accounts need either their own table or cross-account DynamoDB access.
 
-**Cross-account state access required a dedicated role**
-A `TerraformStateRole` was created in the management account with permissions to read/write the S3 state bucket. Child account Terraform runs assume this role via the backend `assume_role` block.
-
-**`role_arn` is not a valid top-level S3 backend key**
-In some Terraform versions, setting `role_arn` directly in the `backend "s3"` block is not supported. The correct approach is the nested `assume_role` block:
-
+**`role_arn` is not a valid top-level S3 backend key.** Use the nested block:
 ```hcl
 # Wrong
-backend "s3" {
-  role_arn = "arn:aws:iam::..."
-}
+backend "s3" { role_arn = "arn:aws:iam::..." }
 
 # Correct
 backend "s3" {
-  assume_role = {
-    role_arn = "arn:aws:iam::..."
-  }
+  assume_role = { role_arn = "arn:aws:iam::..." }
 }
 ```
 
-**Double role assumption causes 403**
-`providers.tf` already assumes the correct deployment role for all AWS API calls. Running `assume-dev` beforehand and then running `terraform apply` causes the role to be assumed twice, which results in 403 permission errors. Run Terraform directly without pre-assuming a role.
+**Don't run `assume-dev` before `terraform apply`.** `providers.tf` assumes the deployment role itself. Pre-assuming causes double assumption → 403.
 
 ---
 
 ### Kubernetes & Helm
 
-**ALB controller had a wrong `depends_on`**
-The ALB controller Terraform resource had `depends_on = [module.eks_addons]`. This meant that targeting ALB controller with `-target` would trigger the entire `eks_addons` module, causing Kubecost to deploy unexpectedly. The dependency was incorrect and was removed.
+**`vpc-cni` must be healthy before anything else.** It assigns VPC IPs to pods. Deploy it first, verify it's running, then proceed. Skipping this causes `FailedCreatePodSandBox` on every subsequent pod.
 
-**`vpc-cni` must be running before any other pods**
-The `vpc-cni` addon is responsible for assigning VPC IP addresses to pods. If any other pods are scheduled before `vpc-cni` is fully running, they will fail with `FailedCreatePodSandBox`. Always deploy and verify `vpc-cni` before proceeding with other workloads.
+**EBS CSI driver is not optional.** Prometheus and Kubecost use PVCs. Without `aws-ebs-csi-driver` + its IRSA role, PVCs stay `Pending` forever.
 
-**EBS CSI driver was missing**
-Kubecost and Prometheus use PersistentVolumeClaims. Without the `aws-ebs-csi-driver` addon, PVCs remain in `Pending` state and pods never start. The driver also requires an IRSA role with permissions to manage EBS volumes.
+**Set StorageClass explicitly in Kubecost Helm values.** No default StorageClass was configured, so PVCs stayed unbound even with the driver installed. Fix: `storageClass: gp2`.
 
-**StorageClass not set on Kubecost PVCs**
-Even with the EBS CSI driver installed, Kubecost PVCs remained unbound because no StorageClass was specified and no default StorageClass was configured. Fixed by setting `storageClass: gp2` explicitly in the Kubecost Helm values.
+**Wrong `depends_on` on ALB controller.** Had `depends_on = [module.eks_addons]` — caused the entire addons module to run when targeting ALB controller with `-target`. Removed.
 
-**`eks-addons/main.tf` was corrupted by incremental edits**
-After several rounds of manual edits to `eks-addons/main.tf`, Kubecost image override values accidentally ended up inside the cluster-autoscaler Helm release block. The cluster-autoscaler then failed to deploy because it received unknown Helm values. Always review a full diff of the file before applying after manual edits.
+**`context deadline exceeded` hides the real problem.** Helm timeouts look like network issues but are usually `ImagePullBackOff`. Always check `kubectl get pods -A` and `kubectl describe pod <name>` before digging into Helm or networking.
+
+**Incremental edits corrupted `eks-addons/main.tf`.** Kubecost image overrides ended up inside the cluster-autoscaler block. cluster-autoscaler failed on unknown Helm values. Always diff the full file before applying after manual edits.
 
 ---
 
 ### General
 
-**`assume-dev` session expires after 1 hour**
-The `assume-dev` script generates temporary STS credentials that expire after 1 hour. Any `kubectl` or AWS CLI commands will start failing with auth errors after this. Re-run `assume-dev` to refresh credentials.
-
-**`context deadline exceeded` on Helm was masking `ImagePullBackOff`**
-When a Helm release times out, it surfaces as `context deadline exceeded`. This looks like a networking or Helm issue but is often caused by pods that are stuck in `ImagePullBackOff` — the release times out waiting for pods that will never become ready. Always check pod status with `kubectl get pods -A` and `kubectl describe pod <name>` before investigating Helm or network issues.
+**`assume-dev` credentials expire after 1 hour.** AWS CLI and kubectl calls will start failing with auth errors. Re-run `assume-dev` to refresh.
 
 ---
 
-## Checklist for Fresh Deployments
+## Fresh Deployment Checklist
 
 - [ ] `TerraformStateRole` exists in management account
-- [ ] S3 bucket policy allows access from child account role ARN
-- [ ] DynamoDB `tf-locks` table accessible from target account
-- [ ] Node IAM role includes `ecr:CreateRepository` and `ecr:BatchImportUpstreamImage`
-- [ ] All upstream image references overridden to ECR pull-through prefixes
-- [ ] Kubecost Helm values use `kubecostModel.image` and `kubecostFrontend.image`
-- [ ] Grafana sidecar (`kiwigrid/k8s-sidecar`) image overridden to ECR
-- [ ] `vpc-cni` addon running and healthy before scheduling other pods
-- [ ] `aws-ebs-csi-driver` addon + IRSA role in place before deploying Prometheus/Kubecost
+- [ ] S3 bucket policy allows child account role ARN
+- [ ] `tf-locks` DynamoDB table accessible cross-account
+- [ ] Node IAM role has `ecr:CreateRepository` + `ecr:BatchImportUpstreamImage`
+- [ ] All image refs overridden to ECR pull-through prefixes
+- [ ] Kubecost Helm values use `kubecostModel.image` + `kubecostFrontend.image`
+- [ ] Grafana sidecar (`kiwigrid/k8s-sidecar`) overridden to ECR
+- [ ] `vpc-cni` healthy before scheduling any other pods
+- [ ] `aws-ebs-csi-driver` + IRSA role deployed before Prometheus/Kubecost
 - [ ] StorageClass explicitly set in Kubecost Helm values
 - [ ] Do not run `assume-dev` before `terraform apply`
