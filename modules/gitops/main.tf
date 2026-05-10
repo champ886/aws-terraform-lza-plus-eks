@@ -72,7 +72,7 @@ resource "helm_release" "argocd" {
   chart            = "argo-cd"
   namespace        = kubernetes_namespace.argocd.metadata[0].name
   version          = "7.3.4"
-  timeout          = 600
+  timeout          = 900
   wait             = true
   wait_for_jobs    = true
   create_namespace = false
