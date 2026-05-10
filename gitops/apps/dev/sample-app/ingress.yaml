@@ -1,0 +1,48 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sample-app
+  namespace: sample-app
+  labels:
+    app: sample-app
+    environment: dev
+    managed-by: argocd
+  annotations:
+    # ALB controller watches for this class
+    kubernetes.io/ingress.class: alb
+
+    # internet-facing = public ALB in public subnets
+    # Public subnets must carry:
+    #   kubernetes.io/role/elb=1
+    #   kubernetes.io/cluster/lean-dev=shared
+    # Apply these tags to your public subnets via AWS console
+    # or add aws_ec2_tag resources in the Terraform EKS env
+    alb.ingress.kubernetes.io/scheme: internet-facing
+
+    # ip target type routes directly to pod IPs
+    # Required for VPC-native CNI (vpc-cni addon)
+    # Do NOT use instance target type — pods are not
+    # reachable via node ports in this network design
+    alb.ingress.kubernetes.io/target-type: ip
+
+    # Group name allows multiple Ingress objects to share
+    # one ALB — reduces cost for multi-service apps
+    alb.ingress.kubernetes.io/group.name: sample-app
+
+    # ALB health check settings — must match readinessProbe
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sample-app
+                port:
+                  number: 80

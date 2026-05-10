@@ -125,3 +125,30 @@ module "alb_controller" {
 
   depends_on = [module.eks_addons]
 }
+
+# -----------------------------------------------
+# GITOPS — ARGO CD
+# Step 4 — deploy after ALB controller is running
+# Terraform installs Argo CD via Helm
+# Argo CD then manages all app manifests from
+# the gitops/ directory in this repo
+# terraform apply -target=module.gitops
+# -----------------------------------------------
+module "gitops" {
+  source = "../../../modules/gitops"
+
+  providers = {
+    aws.workload = aws.workload
+    helm         = helm
+    kubernetes   = kubernetes
+  }
+
+  environment            = "dev"
+  aws_account_id         = "435321828725"
+  aws_region             = "ap-southeast-2"
+  gitops_repo_url        = "https://github.com/champ886/aws-terraform-lza-plus-eks"
+  gitops_target_revision = "HEAD"
+
+  depends_on = [module.alb_controller]
+}
+

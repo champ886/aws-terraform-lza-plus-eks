@@ -1,0 +1,9 @@
+# Argo CD creates this namespace before applying the other resources
+# CreateNamespace=true is set in the root-app syncOptions
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sample-app
+  labels:
+    environment: dev
+    managed-by: argocd

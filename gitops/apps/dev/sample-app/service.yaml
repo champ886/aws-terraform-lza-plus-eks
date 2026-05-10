@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sample-app
+  namespace: sample-app
+  labels:
+    app: sample-app
+    environment: dev
+    managed-by: argocd
+spec:
+  # ClusterIP — internal only
+  # The Ingress below exposes it externally via ALB
+  # ALB controller uses ip target type so it talks
+  # directly to pod IPs — no NodePort needed
+  type: ClusterIP
+  selector:
+    app: sample-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80

@@ -1,0 +1,35 @@
+# This is an Argo CD Application manifest
+# The root-app (created by Terraform) reads this file from GitHub
+# and creates this Application object in the cluster
+# Argo CD then syncs gitops/apps/dev/sample-app/ automatically
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sample-app
+  namespace: argocd
+  labels:
+    environment: dev
+    managed-by: argocd
+  # Finalizer ensures Argo CD deletes k8s resources
+  # when this Application object is deleted
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/champ886/aws-terraform-lza-plus-eks
+    targetRevision: HEAD
+    # Points at the folder containing the 4 YAML files above
+    path: gitops/apps/dev/sample-app
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sample-app
+
+  syncPolicy:
+    automated:
+      prune: true      # removes k8s resources when YAML is deleted from git
+      selfHeal: true   # reverts any manual kubectl changes within ~3 minutes
+    syncOptions:
+      - CreateNamespace=true  # creates the namespace if it doesn't exist

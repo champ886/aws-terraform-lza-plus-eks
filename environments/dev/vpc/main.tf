@@ -15,6 +15,7 @@ module "vpc_workload" {
   public_subnet_cidrs  = var.workload_public_subnet_cidrs
   private_subnet_cidrs = var.workload_private_subnet_cidrs
   availability_zones   = var.availability_zones
+  cluster_name         = "lean-dev"
 }
 
 # -----------------------------------------------

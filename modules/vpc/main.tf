@@ -116,6 +116,36 @@ resource "aws_route_table" "private" {
 }
 
 # -----------------------------------------------
+# PUBLIC SUBNET TAGS FOR ALB DISCOVERY
+# ALB controller requires these two tags to find
+# which subnets to place the ALB into
+# Must be applied before creating any Ingress
+# -----------------------------------------------
+resource "aws_ec2_tag" "public_subnet_elb" {
+  provider    = aws.workload
+  count       = length(data.aws_subnets.public.ids)
+  resource_id = tolist(data.aws_subnets.public.ids)[count.index]
+  key         = "kubernetes.io/role/elb"
+  value       = "1"
+}
+
+resource "aws_ec2_tag" "public_subnet_cluster" {
+  provider    = aws.workload
+  count       = length(data.aws_subnets.public.ids)
+  resource_id = tolist(data.aws_subnets.public.ids)[count.index]
+  key         = "kubernetes.io/cluster/lean-dev"
+  value       = "shared"
+}
+
+resource "aws_ec2_tag" "private_subnet_internal_elb" {
+  provider    = aws.workload
+  count       = length(data.aws_subnets.private.ids)
+  resource_id = tolist(data.aws_subnets.private.ids)[count.index]
+  key         = "kubernetes.io/role/internal-elb"
+  value       = "1"
+}
+
+# -----------------------------------------------
 # PUBLIC ROUTE TABLE ASSOCIATIONS
 # Links each public subnet to the public route table
 # -----------------------------------------------

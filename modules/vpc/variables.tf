@@ -52,3 +52,17 @@ variable "availability_zones" {
   description = "Availability zones"
   type        = list(string)
 }
+
+# -----------------------------------------------
+# EKS CLUSTER NAME
+# Optional — only set when this VPC backs an EKS
+# cluster. Drives the subnet tags the ALB
+# controller needs for subnet auto-discovery.
+# Leave empty string "" for non-EKS VPCs.
+# -----------------------------------------------
+variable "cluster_name" {
+  description = "EKS cluster name for subnet tagging — leave empty if not used with EKS"
+  type        = string
+  default     = ""
+}
+
