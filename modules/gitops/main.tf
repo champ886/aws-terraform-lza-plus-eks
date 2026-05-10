@@ -76,6 +76,7 @@ resource "helm_release" "argocd" {
   wait             = true
   wait_for_jobs    = true
   create_namespace = false
+  atomic           = false
   
 
   # -----------------------------------------------
