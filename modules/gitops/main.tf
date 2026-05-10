@@ -250,18 +250,31 @@ resource "null_resource" "argocd_root_app" {
     manifest_hash  = sha256(local.root_app_manifest)
   }
 
-  provisioner "local-exec" {
+provisioner "local-exec" {
+    # -----------------------------------------------
+    # update-kubeconfig is run without --role-arn so
+    # it uses whatever credentials the shell has
+    # directly — avoids double-assumption if shell is
+    # already in the dev account, and works from
+    # management account credentials if not
+    #
+    # Pre-requisite: ensure your shell can reach the
+    # dev account before running terraform apply:
+    #   aws sts get-caller-identity  ← verify account
+    #   aws eks update-kubeconfig --name lean-dev \
+    #     --region ap-southeast-2   ← run manually if needed
+    # -----------------------------------------------
     command = <<-EOT
       aws eks update-kubeconfig \
         --name lean-dev \
-        --region ap-southeast-2 \
-        --role-arn arn:aws:iam::435321828725:role/OrganizationAccountAccessRole
+        --region ap-southeast-2
 
       cat <<'MANIFEST' | kubectl apply --validate=false -f -
 ${local.root_app_manifest}
 MANIFEST
     EOT
-  }
 
-  depends_on = [helm_release.argocd]
-}
+    environment = {
+      AWS_DEFAULT_REGION = "ap-southeast-2"
+    }
+  }
