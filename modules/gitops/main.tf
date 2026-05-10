@@ -234,10 +234,18 @@ locals {
 # time, after helm_release.argocd completes, so
 # the CRD is guaranteed to exist
 #
-# aws eks update-kubeconfig is called first because
-# local-exec runs in a plain shell that does not
-# inherit Terraform's assumed IAM role — kubeconfig
-# must be refreshed explicitly before kubectl runs
+# update-kubeconfig run without --role-arn so it
+# uses whatever credentials the shell has directly
+# avoids double-assumption if shell is already in
+# the dev account, works from management account
+# credentials if not
+#
+# Pre-requisite: ensure your shell can reach the
+# dev account before running terraform apply:
+#   aws sts get-caller-identity  ← verify account
+#   aws eks update-kubeconfig \
+#     --name lean-dev \
+#     --region ap-southeast-2   ← run if needed
 #
 # cat heredoc used instead of echo to safely pass
 # YAML through the shell without corruption
@@ -250,20 +258,7 @@ resource "null_resource" "argocd_root_app" {
     manifest_hash  = sha256(local.root_app_manifest)
   }
 
-provisioner "local-exec" {
-    # -----------------------------------------------
-    # update-kubeconfig is run without --role-arn so
-    # it uses whatever credentials the shell has
-    # directly — avoids double-assumption if shell is
-    # already in the dev account, and works from
-    # management account credentials if not
-    #
-    # Pre-requisite: ensure your shell can reach the
-    # dev account before running terraform apply:
-    #   aws sts get-caller-identity  ← verify account
-    #   aws eks update-kubeconfig --name lean-dev \
-    #     --region ap-southeast-2   ← run manually if needed
-    # -----------------------------------------------
+  provisioner "local-exec" {
     command = <<-EOT
       aws eks update-kubeconfig \
         --name lean-dev \
@@ -274,7 +269,18 @@ ${local.root_app_manifest}
 MANIFEST
     EOT
 
+    # -----------------------------------------------
+    # AWS_DEFAULT_REGION ensures the AWS CLI uses
+    # the correct region regardless of shell config
+    # Do NOT set ACCESS_KEY/SECRET/TOKEN here —
+    # empty strings would clear inherited credentials
+    # The shell inherits valid creds from the
+    # Terraform process environment automatically
+    # -----------------------------------------------
     environment = {
       AWS_DEFAULT_REGION = "ap-southeast-2"
     }
   }
+
+  depends_on = [helm_release.argocd]
+}
