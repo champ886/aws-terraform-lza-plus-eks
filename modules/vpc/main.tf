@@ -116,6 +116,28 @@ resource "aws_route_table" "private" {
 }
 
 # -----------------------------------------------
+# PUBLIC ROUTE TABLE ASSOCIATIONS
+# Links each public subnet to the public route table
+# -----------------------------------------------
+resource "aws_route_table_association" "public" {
+  count          = length(var.public_subnet_cidrs)
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+# -----------------------------------------------
+# PRIVATE ROUTE TABLE ASSOCIATIONS
+# Each private subnet gets its own AZ route table
+# Subnet 1 → AZ-a route table
+# Subnet 2 → AZ-b route table
+# -----------------------------------------------
+resource "aws_route_table_association" "private" {
+  count          = length(var.private_subnet_cidrs)
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private[count.index].id
+}
+
+# -----------------------------------------------
 # EKS SUBNET TAGS — PUBLIC SUBNETS
 # Required by ALB controller to discover which
 # subnets to place internet-facing ALBs into
