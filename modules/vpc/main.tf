@@ -116,53 +116,33 @@ resource "aws_route_table" "private" {
 }
 
 # -----------------------------------------------
-# PUBLIC SUBNET TAGS FOR ALB DISCOVERY
-# ALB controller requires these two tags to find
-# which subnets to place the ALB into
-# Must be applied before creating any Ingress
+# EKS SUBNET TAGS — PUBLIC SUBNETS
+# Required by ALB controller to discover which
+# subnets to place internet-facing ALBs into
+# count guard = no-op when cluster_name is ""
+# so non-EKS VPCs get no EKS-specific tags
 # -----------------------------------------------
 resource "aws_ec2_tag" "public_subnet_elb" {
-  provider    = aws.workload
-  count       = length(data.aws_subnets.public.ids)
-  resource_id = tolist(data.aws_subnets.public.ids)[count.index]
+  count       = var.cluster_name != "" ? length(var.public_subnet_cidrs) : 0
+  resource_id = aws_subnet.public[count.index].id
   key         = "kubernetes.io/role/elb"
   value       = "1"
 }
 
 resource "aws_ec2_tag" "public_subnet_cluster" {
-  provider    = aws.workload
-  count       = length(data.aws_subnets.public.ids)
-  resource_id = tolist(data.aws_subnets.public.ids)[count.index]
-  key         = "kubernetes.io/cluster/lean-dev"
+  count       = var.cluster_name != "" ? length(var.public_subnet_cidrs) : 0
+  resource_id = aws_subnet.public[count.index].id
+  key         = "kubernetes.io/cluster/${var.cluster_name}"
   value       = "shared"
 }
 
+# -----------------------------------------------
+# EKS SUBNET TAGS — PRIVATE SUBNETS
+# Required for internal ALBs if ever needed
+# -----------------------------------------------
 resource "aws_ec2_tag" "private_subnet_internal_elb" {
-  provider    = aws.workload
-  count       = length(data.aws_subnets.private.ids)
-  resource_id = tolist(data.aws_subnets.private.ids)[count.index]
+  count       = var.cluster_name != "" ? length(var.private_subnet_cidrs) : 0
+  resource_id = aws_subnet.private[count.index].id
   key         = "kubernetes.io/role/internal-elb"
   value       = "1"
-}
-
-# -----------------------------------------------
-# PUBLIC ROUTE TABLE ASSOCIATIONS
-# Links each public subnet to the public route table
-# -----------------------------------------------
-resource "aws_route_table_association" "public" {
-  count          = length(var.public_subnet_cidrs)
-  subnet_id      = aws_subnet.public[count.index].id
-  route_table_id = aws_route_table.public.id
-}
-
-# -----------------------------------------------
-# PRIVATE ROUTE TABLE ASSOCIATIONS
-# Each private subnet gets its own AZ route table
-# Subnet 1 → AZ-a route table
-# Subnet 2 → AZ-b route table
-# -----------------------------------------------
-resource "aws_route_table_association" "private" {
-  count          = length(var.private_subnet_cidrs)
-  subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private[count.index].id
 }

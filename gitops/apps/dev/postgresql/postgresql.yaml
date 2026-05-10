@@ -1,0 +1,79 @@
+# Argo CD Application — Bitnami PostgreSQL Helm chart
+# Argo CD fetches this chart from the Bitnami repo and applies it to the cluster
+# This is the Argo CD native Helm source pattern — no wrapper chart needed
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgresql-helm
+  namespace: argocd
+  labels:
+    environment: dev
+    managed-by: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # -----------------------------------------------
+    # BITNAMI HELM CHART
+    # Argo CD pulls this chart directly from the
+    # Bitnami repo — no local chart files needed
+    # Pin the version to avoid surprise upgrades
+    # -----------------------------------------------
+    repoURL: https://charts.bitnami.com/bitnami
+    chart: postgresql
+    targetRevision: "13.4.4"
+
+    helm:
+      releaseName: postgresql
+      values: |
+        # -----------------------------------------------
+        # DATABASE CREDENTIALS
+        # These are plain text here because this is a dev
+        # simulation. For production use Argo CD Vault
+        # plugin or External Secrets Operator to inject
+        # secrets from AWS Secrets Manager instead.
+        # -----------------------------------------------
+        auth:
+          database: appdb
+          username: appuser
+          password: devpassword123
+
+        # -----------------------------------------------
+        # PERSISTENCE — EBS VOLUME VIA PVC
+        # EBS CSI driver (deployed by Terraform EKS layer)
+        # must be running before this syncs or the PVC
+        # will stay Pending
+        # gp2 matches the StorageClass the EBS CSI driver
+        # provides by default in ap-southeast-2
+        # -----------------------------------------------
+        primary:
+          persistence:
+            enabled: true
+            size: 5Gi
+            storageClass: gp2
+
+          # -----------------------------------------------
+          # LEAN RESOURCE LIMITS
+          # Sized for a dev t3.medium spot node
+          # PostgreSQL is mostly idle in this simulation
+          # -----------------------------------------------
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sample-app
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -20,14 +20,36 @@ spec:
     spec:
       containers:
         - name: sample-app
-          # ECR pull-through cache path — docker-hub prefix
-          # Nodes pull via the private ECR endpoint, no internet needed
-          # Full path resolves to docker-hub/library/nginx on first pull
-          # then is cached in ECR indefinitely
+          # ECR pull-through cache — docker-hub prefix
+          # Nodes pull via private ECR endpoint, no internet needed
           image: 435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/docker-hub/library/nginx:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
+
+          # -----------------------------------------------
+          # DATABASE CONNECTION ENV VARS
+          # nginx ignores these — but they prove the wiring
+          # is correct end to end. Any real app that replaces
+          # nginx will find them ready to consume with zero
+          # config changes.
+          #
+          # DB_HOST uses the full in-cluster DNS name so it
+          # works regardless of which pod or node nginx runs on.
+          # CoreDNS resolves this to the PostgreSQL ClusterIP.
+          # -----------------------------------------------
+          env:
+            - name: DB_HOST
+              value: "postgresql.sample-app.svc.cluster.local"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "appdb"
+            - name: DB_USER
+              value: "appuser"
+            - name: DB_PASSWORD
+              value: "devpassword123"
+
           resources:
             requests:
               cpu: "100m"
@@ -35,6 +57,7 @@ spec:
             limits:
               cpu: "250m"
               memory: "256Mi"
+
           livenessProbe:
             httpGet:
               path: /
@@ -42,6 +65,7 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 15
             failureThreshold: 3
+
           readinessProbe:
             httpGet:
               path: /

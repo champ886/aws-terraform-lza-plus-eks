@@ -1,0 +1,32 @@
+# Argo CD Application for PostgreSQL
+# The root-app reads this file and creates the Application object in the cluster
+# Argo CD then syncs gitops/apps/dev/postgresql/ automatically
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgresql
+  namespace: argocd
+  labels:
+    environment: dev
+    managed-by: argocd
+  # Ensures Argo CD cleans up PostgreSQL resources when this Application is deleted
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/champ886/aws-terraform-lza-plus-eks
+    targetRevision: HEAD
+    path: gitops/apps/dev/postgresql
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sample-app
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
