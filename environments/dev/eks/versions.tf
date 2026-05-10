@@ -17,5 +17,17 @@ terraform {
       source  = "hashicorp/tls"
       version = "~> 4.0"
     }
+    # -----------------------------------------------
+    # KUBECTL PROVIDER
+    # Used to apply the Argo CD root app manifest
+    # after Argo CD installs its CRD
+    # Defers validation to apply time — unlike
+    # kubernetes_manifest which validates at plan
+    # time and errors when CRD does not yet exist
+    # -----------------------------------------------
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = "~> 1.14"
+    }    
   }
 }

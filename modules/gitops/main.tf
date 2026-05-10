@@ -1,6 +1,5 @@
 # -----------------------------------------------
 # PROVIDER REQUIREMENTS
-# Must be at the top of the file
 # -----------------------------------------------
 terraform {
   required_providers {
@@ -16,14 +15,15 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.0"
     }
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = "~> 1.14"
+    }
   }
 }
 
 # -----------------------------------------------
 # ARGO CD NAMESPACE
-# Standard namespace — do not change the name
-# Argo CD's own manifests hard-reference
-# argocd as the namespace
 # -----------------------------------------------
 resource "kubernetes_namespace" "argocd" {
   metadata {
@@ -38,12 +38,6 @@ resource "kubernetes_namespace" "argocd" {
 
 # -----------------------------------------------
 # ARGO CD HELM RELEASE
-# Image pulled via quay pull-through cache
-# quay prefix → quay.io (already configured in
-# modules/ecr-pull-through/main.tf)
-# Argo CD is published on quay.io/argoproj/argocd
-# NOT on public.ecr.aws — ecr-public prefix will
-# not find this image
 # -----------------------------------------------
 resource "helm_release" "argocd" {
   name             = "argocd"
@@ -82,9 +76,6 @@ resource "helm_release" "argocd" {
     value = "1"
   }
 
-  # -----------------------------------------------
-  # INSECURE MODE — TLS TERMINATED AT ALB
-  # -----------------------------------------------
   set {
     name  = "server.insecure"
     value = "true"
@@ -156,4 +147,47 @@ resource "helm_release" "argocd" {
   }
 
   depends_on = [kubernetes_namespace.argocd]
+}
+
+# -----------------------------------------------
+# ARGO CD ROOT APP — APPLIED VIA kubectl PROVIDER
+# Uses gavinbunney/kubectl which defers CRD
+# validation to apply time, not plan time
+# This means it works even though the Application
+# CRD is installed by helm_release.argocd above
+# in the same Terraform run
+#
+# No local-exec, no shell credential issues,
+# no manual kubectl apply needed after destroy
+# Fully baked into IaC — destroy and re-apply
+# restores everything automatically
+# -----------------------------------------------
+resource "kubectl_manifest" "argocd_root_app" {
+  yaml_body = <<-YAML
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: root-app
+      namespace: argocd
+      labels:
+        Environment: ${var.environment}
+        ManagedBy: Terraform
+    spec:
+      project: default
+      source:
+        repoURL: ${var.gitops_repo_url}
+        targetRevision: ${var.gitops_target_revision}
+        path: gitops/apps/dev
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+  YAML
+
+  depends_on = [helm_release.argocd]
 }

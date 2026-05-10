@@ -141,6 +141,7 @@ module "gitops" {
     aws.workload = aws.workload
     helm         = helm
     kubernetes   = kubernetes
+    kubectl      = kubectl        # ← add this
   }
 
   environment            = "dev"
