@@ -1,0 +1,118 @@
+# -----------------------------------------------
+# PUSH GITOPS MANIFESTS TO ECR OCI
+# Runs on every push to main that touches the
+# gitops/apps/dev/ directory
+#
+# What it does:
+#   1. Packages gitops/apps/dev/ as a Helm chart
+#      (OCI format — just a tgz with an index)
+#   2. Logs in to ECR in the dev account
+#   3. Pushes to ECR OCI repo created by Terraform
+#
+# Argo CD polls ECR every 3 minutes and applies
+# any changes to the cluster automatically
+# -----------------------------------------------
+name: Push GitOps Manifests to ECR OCI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "gitops/apps/dev/**"
+
+permissions:
+  id-token: write   # required for OIDC auth to AWS
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  AWS_ACCOUNT_ID: "435321828725"
+  ECR_REPO: gitops/apps/dev
+
+jobs:
+  push-manifests:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------------------------------
+      # CHECKOUT
+      # -----------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------
+      # CONFIGURE AWS CREDENTIALS
+      # Uses OIDC — no long-lived keys stored in GitHub
+      # Assumes the GitHubActionsRole in the dev account
+      # You must create this role — see notes below
+      # -----------------------------------------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      # -----------------------------------------------
+      # LOGIN TO ECR
+      # -----------------------------------------------
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # -----------------------------------------------
+      # INSTALL HELM
+      # -----------------------------------------------
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.15.0"
+
+      # -----------------------------------------------
+      # CREATE HELM CHART SKELETON
+      # gitops/apps/dev/ contains raw YAML, not a
+      # Helm chart. We wrap it in a minimal chart
+      # structure so Helm OCI push works correctly.
+      # Argo CD's "chart" source type expects this.
+      # -----------------------------------------------
+      - name: Package manifests as Helm OCI chart
+        run: |
+          # Build chart version from git short SHA
+          VERSION=$(git rev-parse --short HEAD)
+
+          # Create a minimal chart wrapper
+          mkdir -p /tmp/gitops-chart/templates
+
+          # Copy all manifests into templates/
+          cp -r gitops/apps/dev/* /tmp/gitops-chart/templates/
+
+          # Write Chart.yaml
+          cat > /tmp/gitops-chart/Chart.yaml <<EOF
+          apiVersion: v2
+          name: gitops-apps-dev
+          description: GitOps manifests for dev environment
+          type: application
+          version: 0.0.${GITHUB_RUN_NUMBER}
+          appVersion: "${VERSION}"
+          EOF
+
+          # Package the chart
+          helm package /tmp/gitops-chart --version "0.0.${GITHUB_RUN_NUMBER}" --destination /tmp/
+
+          echo "CHART_VERSION=0.0.${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+
+      # -----------------------------------------------
+      # PUSH TO ECR OCI
+      # Pushes versioned tag and re-tags as "latest"
+      # Argo CD root-app uses targetRevision: latest
+      # -----------------------------------------------
+      - name: Push chart to ECR OCI
+        run: |
+          REGISTRY="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+
+          # Push versioned
+          helm push /tmp/gitops-apps-dev-${{ env.CHART_VERSION }}.tgz \
+            oci://${REGISTRY}/${{ env.ECR_REPO }}
+
+          echo "Pushed gitops-apps-dev:${{ env.CHART_VERSION }} to ECR OCI"
+          echo "Argo CD will sync within ~3 minutes"

@@ -27,3 +27,23 @@ output "root_app_name" {
   description = "Name of the root Argo CD Application resource"
   value       = "root-app"
 }
+
+# -----------------------------------------------
+# ECR OCI REPO URL
+# Use this in GitHub Actions to push manifests:
+#   helm push gitops-apps-dev-<ver>.tgz oci://<this value>
+# -----------------------------------------------
+output "gitops_ecr_repo_url" {
+  description = "ECR OCI repository URL — push manifests here from CI"
+  value       = aws_ecr_repository.gitops.repository_url
+}
+
+output "gitops_ecr_registry" {
+  description = "ECR registry hostname — used for docker login in CI"
+  value       = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
+}
+
+output "gitops_ecr_repo_arn" {
+  description = "ARN of the ECR OCI repository — passed to github-actions-role module"
+  value       = aws_ecr_repository.gitops.arn
+}

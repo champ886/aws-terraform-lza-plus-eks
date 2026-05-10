@@ -23,6 +23,92 @@ terraform {
 }
 
 # -----------------------------------------------
+# ECR OCI REPOSITORY FOR GITOPS MANIFESTS
+# Argo CD reads manifests from this private ECR
+# repo via the existing ECR VPC endpoint —
+# no internet egress required, fully consistent
+# with the pull-through cache architecture
+#
+# Naming convention matches your existing repos:
+#   <account>.dkr.ecr.<region>.amazonaws.com/gitops/apps/dev
+# -----------------------------------------------
+resource "aws_ecr_repository" "gitops" {
+  provider             = aws.workload
+  name                 = "gitops/apps/${var.environment}"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = false
+  }
+
+  tags = {
+    Name        = "gitops-apps-${var.environment}"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+# -----------------------------------------------
+# ECR LIFECYCLE POLICY
+# Keep only the last 10 OCI artifact versions
+# Prevents unbounded storage growth as CI pushes
+# new versions on every commit
+# -----------------------------------------------
+resource "aws_ecr_lifecycle_policy" "gitops" {
+  provider   = aws.workload
+  repository = aws_ecr_repository.gitops.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 10 gitops artifact versions"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
+# -----------------------------------------------
+# ECR REPOSITORY POLICY
+# Grants the EKS node role read access so that
+# Argo CD repo-server (running on nodes) can pull
+# the OCI artifact via the ECR VPC endpoint
+# -----------------------------------------------
+resource "aws_ecr_repository_policy" "gitops" {
+  provider   = aws.workload
+  repository = aws_ecr_repository.gitops.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowEKSNodePull"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${var.aws_account_id}:root"
+        }
+        Action = [
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetAuthorizationToken",
+          "ecr:DescribeRepositories",
+          "ecr:ListImages",
+        ]
+      }
+    ]
+  })
+}
+
+# -----------------------------------------------
 # ARGO CD NAMESPACE
 # -----------------------------------------------
 resource "kubernetes_namespace" "argocd" {
@@ -123,7 +209,7 @@ resource "helm_release" "argocd" {
 
   set {
     name  = "server.resources.limits.memory"
-    value = "256Mi"
+    value = "128Mi"
   }
 
   set {
@@ -150,17 +236,20 @@ resource "helm_release" "argocd" {
 }
 
 # -----------------------------------------------
-# ARGO CD ROOT APP — APPLIED VIA kubectl PROVIDER
-# Uses gavinbunney/kubectl which defers CRD
-# validation to apply time, not plan time
-# This means it works even though the Application
-# CRD is installed by helm_release.argocd above
-# in the same Terraform run
+# ARGO CD ROOT APP — OCI SOURCE
+# Points at the private ECR OCI repo, not GitHub
+# Argo CD pulls via ECR VPC endpoint — no internet
 #
-# No local-exec, no shell credential issues,
-# no manual kubectl apply needed after destroy
-# Fully baked into IaC — destroy and re-apply
-# restores everything automatically
+# The OCI artifact is pushed by GitHub Actions on
+# every commit to main (see .github/workflows/)
+#
+# Tag "latest" is always the most recent push.
+# Argo CD polls every 3 minutes by default.
+#
+# gavinbunney/kubectl defers CRD validation to
+# apply time so this works in the same Terraform
+# run that installs Argo CD via Helm above.
+# Fully baked — destroy + reapply restores all.
 # -----------------------------------------------
 resource "kubectl_manifest" "argocd_root_app" {
   yaml_body = <<-YAML
@@ -175,9 +264,9 @@ resource "kubectl_manifest" "argocd_root_app" {
     spec:
       project: default
       source:
-        repoURL: ${var.gitops_repo_url}
-        targetRevision: ${var.gitops_target_revision}
-        path: gitops/apps/dev
+        repoURL: ${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com
+        chart: gitops/apps/${var.environment}
+        targetRevision: latest
       destination:
         server: https://kubernetes.default.svc
         namespace: argocd

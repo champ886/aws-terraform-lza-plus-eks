@@ -1,35 +1,37 @@
 variable "environment" {
-  description = "Environment name — used in labels"
+  description = "Environment name — used in labels and ECR repo path"
   type        = string
   default     = "dev"
 }
 
 variable "aws_account_id" {
-  description = "AWS account ID — used to build ECR pull-through image path"
+  description = "AWS account ID — used to build ECR registry URL"
   type        = string
   default     = "435321828725"
 }
 
 variable "aws_region" {
-  description = "AWS region — used to build ECR pull-through image path"
+  description = "AWS region — used to build ECR registry URL"
   type        = string
   default     = "ap-southeast-2"
 }
 
 # -----------------------------------------------
 # GITOPS REPO URL
-# This is the GitHub repo Argo CD will watch
-# Use SSH URL for private repos with deploy key
-# Use HTTPS URL for public repos (no auth needed)
+# Kept for reference/documentation only —
+# Argo CD no longer reads directly from GitHub.
+# GitHub Actions pushes manifests to ECR OCI.
+# Remove this variable entirely once the team
+# is comfortable with the OCI-only flow.
 # -----------------------------------------------
 variable "gitops_repo_url" {
-  description = "GitHub repo URL that Argo CD monitors for app manifests"
+  description = "GitHub repo URL — used for documentation only, not by Argo CD"
   type        = string
   default     = "https://github.com/champ886/aws-terraform-lza-plus-eks"
 }
 
 variable "gitops_target_revision" {
-  description = "Git branch Argo CD tracks — HEAD means default branch"
+  description = "Kept for backwards compat — not used in OCI source mode"
   type        = string
   default     = "HEAD"
 }

@@ -49,7 +49,7 @@ module "ecr_pull_through" {
   environment         = var.environment
   docker_hub_username = var.docker_hub_username
   docker_hub_token    = var.docker_hub_token
-}  
+}
 
 # -----------------------------------------------
 # EKS CLUSTER MODULE
@@ -79,7 +79,6 @@ module "eks" {
 # -----------------------------------------------
 # EKS ADDONS MODULE
 # Step 2 — core addons + autoscaler + kubecost
-# ALB controller removed — in its own module below
 # terraform apply -target=module.eks_addons
 # -----------------------------------------------
 module "eks_addons" {
@@ -103,9 +102,7 @@ module "eks_addons" {
 
 # -----------------------------------------------
 # ALB CONTROLLER MODULE
-# Step 3 — deploy last after core addons running
-# Isolated so webhook issues never block kubecost
-# or autoscaler installations
+# Step 3 — deploy after core addons
 # terraform apply -target=module.alb_controller
 # -----------------------------------------------
 module "alb_controller" {
@@ -128,10 +125,11 @@ module "alb_controller" {
 
 # -----------------------------------------------
 # GITOPS — ARGO CD
-# Step 4 — deploy after ALB controller is running
-# Terraform installs Argo CD via Helm
-# Argo CD then manages all app manifests from
-# the gitops/ directory in this repo
+# Step 4 — deploy after ALB controller
+# Terraform installs Argo CD via Helm and creates
+# the ECR OCI repo for GitOps manifests
+# Argo CD reads manifests from ECR, not GitHub —
+# fully private via existing ECR VPC endpoint
 # terraform apply -target=module.gitops
 # -----------------------------------------------
 module "gitops" {
@@ -141,15 +139,30 @@ module "gitops" {
     aws.workload = aws.workload
     helm         = helm
     kubernetes   = kubernetes
-    kubectl      = kubectl        # ← add this
+    kubectl      = kubectl
   }
 
-  environment            = "dev"
-  aws_account_id         = "435321828725"
-  aws_region             = "ap-southeast-2"
-  gitops_repo_url        = "https://github.com/champ886/aws-terraform-lza-plus-eks"
-  gitops_target_revision = "HEAD"
+  environment    = "dev"
+  aws_account_id = "435321828725"
+  aws_region     = "ap-southeast-2"
 
   depends_on = [module.alb_controller]
 }
 
+# -----------------------------------------------
+# GITHUB ACTIONS ROLE
+# Allows GitHub Actions to push GitOps manifests
+# to the ECR OCI repo via OIDC — no stored keys
+# -----------------------------------------------
+module "github_actions_role" {
+  source = "../../../modules/github-actions-role"
+
+  providers = {
+    aws = aws.workload
+  }
+
+  environment        = "dev"
+  ecr_repository_arn = module.gitops.gitops_ecr_repo_arn
+
+  depends_on = [module.gitops]
+}
