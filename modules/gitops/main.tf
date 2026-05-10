@@ -1,3 +1,14 @@
+
+# -----------------------------------------------
+# QUICK FIX: MANUALLY CREATE ECR REPO
+# This bypasses the need for nodes to have ecr:CreateRepository
+# permissions for the pull-through cache to work.
+# -----------------------------------------------
+resource "aws_ecr_repository" "argocd_cache" {
+  provider = aws.workload # Use the alias that manages your ECR/Workload resources
+  name     = "ecr-public/argoproj/argocd"
+}
+
 # -----------------------------------------------
 # PROVIDER REQUIREMENTS
 # Helm provider points at lean-dev cluster
@@ -65,6 +76,7 @@ resource "helm_release" "argocd" {
   wait             = true
   wait_for_jobs    = true
   create_namespace = false
+  
 
   # -----------------------------------------------
   # DISABLE HA — SINGLE REPLICA PER COMPONENT
@@ -162,7 +174,10 @@ resource "helm_release" "argocd" {
     value = "512Mi"
   }
 
-  depends_on = [kubernetes_namespace.argocd]
+  depends_on = [
+    kubernetes_namespace.argocd,
+    aws_ecr_repository.argocd_cache # Add this line
+  ]
 }
 
 # -----------------------------------------------
