@@ -25,6 +25,9 @@ terraform {
 
 # -----------------------------------------------
 # ARGO CD NAMESPACE
+# Standard namespace — do not change the name
+# Argo CD's own manifests hard-reference
+# argocd as the namespace
 # -----------------------------------------------
 resource "kubernetes_namespace" "argocd" {
   metadata {
@@ -58,6 +61,11 @@ resource "helm_release" "argocd" {
   create_namespace = false
   atomic           = false
 
+  # -----------------------------------------------
+  # DISABLE HA — SINGLE REPLICA PER COMPONENT
+  # Cuts resource usage by ~60% vs HA mode
+  # Appropriate for dev; flip to true for prod
+  # -----------------------------------------------
   set {
     name  = "redis-ha.enabled"
     value = "false"
@@ -83,21 +91,56 @@ resource "helm_release" "argocd" {
     value = "1"
   }
 
+  # -----------------------------------------------
+  # INSECURE MODE — TLS TERMINATED AT ALB
+  # Argo CD server listens on plain HTTP
+  # ALB handles HTTPS if you add ACM later
+  # -----------------------------------------------
   set {
     name  = "server.insecure"
     value = "true"
   }
 
   # -----------------------------------------------
-  # CORRECTED IMAGE PATH
-  # Argo CD lives on quay.io/argoproj/argocd
-  # Use the quay pull-through prefix, not ecr-public
+  # DISABLE DEX — NOT NEEDED FOR SINGLE-USER DEV
+  # Dex provides SSO/OIDC federation — unnecessary
+  # when you are the only user accessing the cluster
+  # Dex pulls from ghcr.io which has no pull-through
+  # cache rule — disabling avoids ImagePullBackOff
+  # Re-enable and add ghcr pull-through rule when
+  # you need team SSO or OIDC login integration
+  # -----------------------------------------------
+  set {
+    name  = "dex.enabled"
+    value = "false"
+  }
+
+  # -----------------------------------------------
+  # REDIS IMAGE OVERRIDE
+  # Redis pulls from docker.io/library/redis
+  # Route via docker-hub pull-through prefix
+  # -----------------------------------------------
+  set {
+    name  = "redis.image.repository"
+    value = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/docker-hub/library/redis"
+  }
+
+  # -----------------------------------------------
+  # ARGO CD IMAGE — quay pull-through
+  # Argo CD is published on quay.io/argoproj/argocd
+  # quay pull-through rule already exists in
+  # modules/ecr-pull-through/main.tf
   # -----------------------------------------------
   set {
     name  = "global.image.repository"
     value = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/quay/argoproj/argocd"
   }
 
+  # -----------------------------------------------
+  # LEAN RESOURCE LIMITS
+  # Argo CD server + controller fit on 1 t3.medium
+  # when not actively syncing many apps
+  # -----------------------------------------------
   set {
     name  = "server.resources.requests.cpu"
     value = "50m"
@@ -142,47 +185,64 @@ resource "helm_release" "argocd" {
 }
 
 # -----------------------------------------------
-# ROOT APP MANIFEST LOCAL
+# ROOT APP MANIFEST
+# Written as a plain YAML heredoc — not yamlencode
+# yamlencode wraps keys in double quotes which
+# Kubernetes rejects and shell echo corrupts
+# Heredoc passes content through the shell safely
+# without interpreting special characters
 # -----------------------------------------------
 locals {
-  root_app_manifest = yamlencode({
-    apiVersion = "argoproj.io/v1alpha1"
-    kind       = "Application"
-    metadata = {
-      name      = "root-app"
-      namespace = "argocd"
-      labels = {
-        Environment = var.environment
-        ManagedBy   = "Terraform"
-      }
-    }
-    spec = {
-      project = "default"
-      source = {
-        repoURL        = var.gitops_repo_url
-        targetRevision = var.gitops_target_revision
-        path           = "gitops/apps/dev"
-      }
-      destination = {
-        server    = "https://kubernetes.default.svc"
-        namespace = "argocd"
-      }
-      syncPolicy = {
-        automated = {
-          prune    = true
-          selfHeal = true
-        }
-        syncOptions = ["CreateNamespace=true"]
-      }
-    }
-  })
+  root_app_manifest = <<-YAML
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: root-app
+      namespace: argocd
+      labels:
+        Environment: ${var.environment}
+        ManagedBy: Terraform
+    spec:
+      project: default
+      source:
+        repoURL: ${var.gitops_repo_url}
+        targetRevision: ${var.gitops_target_revision}
+        path: gitops/apps/dev
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+  YAML
 }
 
 # -----------------------------------------------
 # ARGO CD ROOT APP — APPLIED VIA kubectl
-# null_resource used instead of kubernetes_manifest
-# because the Application CRD does not exist at
-# plan time — it is installed by helm_release above
+# Cannot use kubernetes_manifest because the
+# Application CRD does not exist at plan time —
+# it is installed by helm_release.argocd above
+#
+# kubernetes_manifest validates against the live
+# cluster API at plan time and errors if the CRD
+# is not yet registered
+#
+# null_resource + local-exec runs only at apply
+# time, after helm_release.argocd completes, so
+# the CRD is guaranteed to exist
+#
+# aws eks update-kubeconfig is called first because
+# local-exec runs in a plain shell that does not
+# inherit Terraform's assumed IAM role — kubeconfig
+# must be refreshed explicitly before kubectl runs
+#
+# cat heredoc used instead of echo to safely pass
+# YAML through the shell without corruption
+# --validate=false skips client-side schema check
+# and relies on server-side validation instead
 # -----------------------------------------------
 resource "null_resource" "argocd_root_app" {
   triggers = {
@@ -192,7 +252,14 @@ resource "null_resource" "argocd_root_app" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      echo '${local.root_app_manifest}' | kubectl apply -f -
+      aws eks update-kubeconfig \
+        --name lean-dev \
+        --region ap-southeast-2 \
+        --role-arn arn:aws:iam::435321828725:role/OrganizationAccountAccessRole
+
+      cat <<'MANIFEST' | kubectl apply --validate=false -f -
+${local.root_app_manifest}
+MANIFEST
     EOT
   }
 
