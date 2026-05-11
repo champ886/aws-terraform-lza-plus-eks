@@ -165,6 +165,20 @@ resource "helm_release" "alb_controller" {
   wait_for_jobs = true
 
   set {
+    name  = "enableShield"
+    value = "false"
+  }
+
+  set {
+    name  = "enableWaf"
+    value = "false"
+  }
+
+  set {
+    name  = "enableWafv2"
+    value = "false"
+  }
+  set {
     name  = "clusterName"
     value = var.cluster_name
   }

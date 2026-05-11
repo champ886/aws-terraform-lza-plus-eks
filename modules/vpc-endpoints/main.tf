@@ -178,3 +178,47 @@ resource "aws_vpc_endpoint" "autoscaling" {
     ManagedBy   = "Terraform"
   }
 }
+
+# -----------------------------------------------
+# ELASTIC LOAD BALANCING ENDPOINT
+# Required for ALB controller to call the ELB
+# API to provision load balancers
+# Without this the controller times out trying
+# to reach elasticloadbalancing.amazonaws.com
+# -----------------------------------------------
+resource "aws_vpc_endpoint" "elb" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.region}.elasticloadbalancing"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name        = "${var.environment}-${var.name}-elb-endpoint"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+# -----------------------------------------------
+# WAFV2 ENDPOINT
+# Required for ALB controller to check WAF state
+# before provisioning internet-facing ALBs
+# Without this the controller times out and the
+# ALB is never fully created
+# -----------------------------------------------
+resource "aws_vpc_endpoint" "wafv2" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.region}.wafv2"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name        = "${var.environment}-${var.name}-wafv2-endpoint"
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
