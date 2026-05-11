@@ -24,18 +24,12 @@ terraform {
 
 # -----------------------------------------------
 # ECR OCI REPOSITORY FOR GITOPS MANIFESTS
-# Argo CD reads manifests from this private ECR
-# repo via the existing ECR VPC endpoint —
-# no internet egress required, fully consistent
-# with the pull-through cache architecture
-#
-# Naming convention matches your existing repos:
-#   <account>.dkr.ecr.<region>.amazonaws.com/gitops/apps/dev
 # -----------------------------------------------
 resource "aws_ecr_repository" "gitops" {
   provider             = aws.workload
-  name                 = "gitops/apps/${var.environment}"
+  name                 = "gitops-apps-${var.environment}"
   image_tag_mutability = "MUTABLE"
+  force_delete         = true   
 
   image_scanning_configuration {
     scan_on_push = false
@@ -50,9 +44,6 @@ resource "aws_ecr_repository" "gitops" {
 
 # -----------------------------------------------
 # ECR LIFECYCLE POLICY
-# Keep only the last 10 OCI artifact versions
-# Prevents unbounded storage growth as CI pushes
-# new versions on every commit
 # -----------------------------------------------
 resource "aws_ecr_lifecycle_policy" "gitops" {
   provider   = aws.workload
@@ -78,9 +69,6 @@ resource "aws_ecr_lifecycle_policy" "gitops" {
 
 # -----------------------------------------------
 # ECR REPOSITORY POLICY
-# Grants the EKS node role read access so that
-# Argo CD repo-server (running on nodes) can pull
-# the OCI artifact via the ECR VPC endpoint
 # -----------------------------------------------
 resource "aws_ecr_repository_policy" "gitops" {
   provider   = aws.workload
@@ -90,24 +78,16 @@ resource "aws_ecr_repository_policy" "gitops" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowEKSNodePull"
+        Sid    = "AllowAccountAccess"
         Effect = "Allow"
         Principal = {
           AWS = "arn:aws:iam::${var.aws_account_id}:root"
         }
-        Action = [
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:GetAuthorizationToken",
-          "ecr:DescribeRepositories",
-          "ecr:ListImages",
-        ]
+        Action = "ecr:*"
       }
     ]
   })
 }
-
 # -----------------------------------------------
 # ARGO CD NAMESPACE
 # -----------------------------------------------
@@ -167,26 +147,16 @@ resource "helm_release" "argocd" {
     value = "true"
   }
 
-  # -----------------------------------------------
-  # DISABLE DEX — NOT NEEDED FOR SINGLE-USER DEV
-  # Re-enable when you need SSO/OIDC integration
-  # -----------------------------------------------
   set {
     name  = "dex.enabled"
     value = "false"
   }
 
-  # -----------------------------------------------
-  # REDIS IMAGE — docker-hub pull-through
-  # -----------------------------------------------
   set {
     name  = "redis.image.repository"
     value = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/docker-hub/library/redis"
   }
 
-  # -----------------------------------------------
-  # ARGO CD IMAGE — quay pull-through
-  # -----------------------------------------------
   set {
     name  = "global.image.repository"
     value = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/quay/argoproj/argocd"
@@ -237,19 +207,6 @@ resource "helm_release" "argocd" {
 
 # -----------------------------------------------
 # ARGO CD ROOT APP — OCI SOURCE
-# Points at the private ECR OCI repo, not GitHub
-# Argo CD pulls via ECR VPC endpoint — no internet
-#
-# The OCI artifact is pushed by GitHub Actions on
-# every commit to main (see .github/workflows/)
-#
-# Tag "latest" is always the most recent push.
-# Argo CD polls every 3 minutes by default.
-#
-# gavinbunney/kubectl defers CRD validation to
-# apply time so this works in the same Terraform
-# run that installs Argo CD via Helm above.
-# Fully baked — destroy + reapply restores all.
 # -----------------------------------------------
 resource "kubectl_manifest" "argocd_root_app" {
   yaml_body = <<-YAML
@@ -265,8 +222,8 @@ resource "kubectl_manifest" "argocd_root_app" {
       project: default
       source:
         repoURL: ${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com
-        chart: gitops/apps/${var.environment}
-        targetRevision: latest
+        chart: gitops-apps-${var.environment}
+        targetRevision: 0.0.1
       destination:
         server: https://kubernetes.default.svc
         namespace: argocd
@@ -277,6 +234,37 @@ resource "kubectl_manifest" "argocd_root_app" {
         syncOptions:
           - CreateNamespace=true
   YAML
+
+  depends_on = [helm_release.argocd]
+} # <--- ADDED THIS MISSING BRACE
+
+# -----------------------------------------------
+# ECR AUTHORIZATION TOKEN
+# -----------------------------------------------
+data "aws_ecr_authorization_token" "token" {
+  provider = aws.workload
+}
+
+# -----------------------------------------------
+# ARGO CD ECR CREDENTIALS SECRET
+# -----------------------------------------------
+resource "kubernetes_secret" "argocd_ecr_creds" {
+  metadata {
+    name      = "ecr-credentials"
+    namespace = kubernetes_namespace.argocd.metadata[0].name
+    labels = {
+      "argocd.argoproj.io/secret-type" = "repository"
+    }
+  }
+
+  data = {
+    type                  = "helm"
+    name                  = "ecr-gitops"
+    url                   = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
+    enableOCI             = "true"
+    username              = "AWS"
+    password              = data.aws_ecr_authorization_token.token.password
+  }
 
   depends_on = [helm_release.argocd]
 }
