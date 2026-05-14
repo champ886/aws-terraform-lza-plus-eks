@@ -1,4 +1,3 @@
-````markdown
 # aws-terraform-lza-plus-eks
 
 A production-ready, cost-optimised EKS pattern for AWS Landing Zone — fully private nodes, no NAT Gateway, GitOps-driven workload delivery via Argo CD and ECR OCI.
@@ -32,10 +31,27 @@ This repo replaces NAT Gateway entirely with two cheaper, more secure alternativ
 
 Workload delivery follows a GitOps split:
 
-| Layer | Tool | Manages |
-|---|---|---|
-| VPC, EKS, IAM, add-ons, ALB controller, Argo CD | Terraform | Infrastructure |
-| Sample app, PostgreSQL, all workloads | Argo CD | Applications |
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Tool</th>
+<th>Manages</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VPC, EKS, IAM, add-ons, ALB controller, Argo CD</td>
+<td>Terraform</td>
+<td>Infrastructure</td>
+</tr>
+<tr>
+<td>Sample app, PostgreSQL, all workloads</td>
+<td>Argo CD</td>
+<td>Applications</td>
+</tr>
+</tbody>
+</table>
 
 Argo CD reads manifests from a **private ECR OCI repository** — not directly from GitHub. This keeps all traffic fully private via the ECR VPC endpoint and eliminates the need for a NAT Gateway or GitHub VPC endpoint.
 
@@ -43,139 +59,228 @@ Argo CD reads manifests from a **private ECR OCI repository** — not directly f
 
 ## What This Repo Provisions
 
-| Component | Module | Purpose |
-|---|---|---|
-| VPC + Subnets | `modules/vpc` | Public and private subnets with EKS subnet tags |
-| VPC Interface Endpoints | `modules/vpc-endpoints` | Private connectivity from nodes to AWS APIs — replaces NAT Gateway |
-| ECR Pull Through Cache | `modules/ecr-pull-through` | Proxy and cache for upstream registries |
-| EKS Cluster | `modules/eks` | Private EKS control plane + managed node groups |
-| EKS Add-ons | `modules/eks-addons` | vpc-cni, ebs-csi-driver, cluster-autoscaler, Kubecost, Prometheus, Grafana |
-| ALB Controller | `modules/alb-controller` | Provisions ALBs from Kubernetes Ingress objects |
-| GitOps (Argo CD) | `modules/gitops` | Installs Argo CD, creates ECR OCI repo, applies root Application |
-| GitHub Actions Role | `modules/github-actions-role` | OIDC IAM role for CI to push GitOps manifests to ECR |
-| Terraform State Role | `modules/terraform-state-role` | Cross-account IAM role for S3 state access |
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Module</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VPC + Subnets</td>
+<td><code>modules/vpc</code></td>
+<td>Public and private subnets with EKS subnet tags</td>
+</tr>
+<tr>
+<td>VPC Interface Endpoints</td>
+<td><code>modules/vpc-endpoints</code></td>
+<td>Private connectivity from nodes to AWS APIs — replaces NAT Gateway</td>
+</tr>
+<tr>
+<td>ECR Pull Through Cache</td>
+<td><code>modules/ecr-pull-through</code></td>
+<td>Proxy and cache for upstream registries</td>
+</tr>
+<tr>
+<td>EKS Cluster</td>
+<td><code>modules/eks</code></td>
+<td>Private EKS control plane + managed node groups</td>
+</tr>
+<tr>
+<td>EKS Add-ons</td>
+<td><code>modules/eks-addons</code></td>
+<td>vpc-cni, ebs-csi-driver, cluster-autoscaler, Kubecost, Prometheus, Grafana</td>
+</tr>
+<tr>
+<td>ALB Controller</td>
+<td><code>modules/alb-controller</code></td>
+<td>Provisions ALBs from Kubernetes Ingress objects</td>
+</tr>
+<tr>
+<td>GitOps (Argo CD)</td>
+<td><code>modules/gitops</code></td>
+<td>Installs Argo CD, creates ECR OCI repo, applies root Application</td>
+</tr>
+<tr>
+<td>GitHub Actions Role</td>
+<td><code>modules/github-actions-role</code></td>
+<td>OIDC IAM role for CI to push GitOps manifests to ECR</td>
+</tr>
+<tr>
+<td>Terraform State Role</td>
+<td><code>modules/terraform-state-role</code></td>
+<td>Cross-account IAM role for S3 state access</td>
+</tr>
+</tbody>
+</table>
 
 ---
 
 ## Architecture
 
-````
-Internet
-    │
-    ▼
-ALB (public subnet)               ← provisioned by ALB controller from Ingress objects
-    │
-    ▼
-Pods (private subnets)
-    │
-    ├──▶ VPC Interface Endpoints (PrivateLink)
-    │        ├── ec2                     → Node bootstrap (nodeadm)
-    │        ├── eks                     → EKS control plane API
-    │        ├── sts                     → IRSA token exchange
-    │        ├── ecr.api                 → ECR authentication
-    │        ├── ecr.dkr                 → Image pulls
-    │        ├── s3 (Gateway, free)      → Image layer pulls
-    │        ├── autoscaling             → Cluster Autoscaler
-    │        ├── elasticloadbalancing    → ALB controller ELB API calls
-    │        └── wafv2                   → ALB controller WAF state check
-    │
-    └──▶ Private ECR
-             ├── registry-k8s-io        → cluster-autoscaler
-             ├── ecr-public             → ALB controller, Kubecost
-             ├── docker-hub             → Grafana, Prometheus, Redis, nginx, postgres
-             ├── quay                   → Argo CD, prometheus-config-reloader
-             └── gitops-apps-dev        → GitOps OCI chart (pushed by GitHub Actions)
-````
+Internet → ALB (public subnet) ← provisioned by ALB controller from Ingress objects → Pods (private subnets) connected to:
 
-No traffic leaves the AWS network. No NAT Gateway. No internet gateway on node subnets.
+**VPC Interface Endpoints (PrivateLink)**
+- `ec2` → Node bootstrap (nodeadm)
+- `eks` → EKS control plane API
+- `sts` → IRSA token exchange
+- `ecr.api` → ECR authentication
+- `ecr.dkr` → Image pulls
+- `s3` (Gateway, free) → Image layer pulls
+- `autoscaling` → Cluster Autoscaler
+- `elasticloadbalancing` → ALB controller ELB API calls
+- `wafv2` → ALB controller WAF state check
+
+**Private ECR**
+- `registry-k8s-io` → cluster-autoscaler
+- `ecr-public` → ALB controller, Kubecost
+- `docker-hub` → Grafana, Prometheus, Redis, nginx, postgres
+- `quay` → Argo CD, prometheus-config-reloader
+- `gitops-apps-dev` → GitOps OCI chart (pushed by GitHub Actions)
+
+**No traffic leaves the AWS network. No NAT Gateway. No internet gateway on node subnets.**
 
 ---
 
 ## GitOps Flow
 
-````
-git push to main
-      │
-      ▼
-GitHub Actions (.github/workflows/push-gitops-manifests.yml)
-      │   packages gitops/apps/dev/ as a Helm OCI chart
-      │   pushes to ECR OCI repo via OIDC — no stored AWS keys
-      ▼
-ECR OCI repo: 435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/gitops-apps-dev
-      │
-      ▼  (Argo CD polls every 3 minutes via ECR VPC endpoint)
-Argo CD repo-server
-      │   reads chart, extracts YAML manifests
-      ▼
-Kubernetes API
-      │   creates/updates Deployments, Services, Ingresses
-      ▼
-ALB controller sees new Ingress → provisions ALB → traffic flows
-````
+git push to main → GitHub Actions (.github/workflows/push-gitops-manifests.yml) packages gitops/apps/dev/ as a Helm OCI chart and pushes to ECR OCI repo via OIDC (no stored AWS keys) → ECR OCI repo: 435321828725.dkr.ecr.ap-southeast-2.amazonaws.com/gitops-apps-dev → Argo CD repo-server (polls every 3 minutes via ECR VPC endpoint) reads chart and extracts YAML manifests → Kubernetes API creates/updates Deployments, Services, Ingresses → ALB controller sees new Ingress and provisions ALB → traffic flows
 
 ---
 
 ## Repo Structure
 
-````
+```text
 aws-terraform-lza-plus-eks/
 ├── .github/
 │   └── workflows/
-│       └── push-gitops-manifests.yml   ← CI: packages and pushes manifests to ECR OCI
+│       └── push-gitops-manifests.yml  ← CI: packages and pushes manifests to ECR OCI
 │
 ├── environments/
 │   └── dev/
-│       ├── vpc/                        ← VPC + endpoints (apply first)
-│       └── eks/                        ← EKS + all modules (apply second)
+│       ├── vpc/  ← VPC + endpoints (apply first)
+│       └── eks/  ← EKS + all modules (apply second)
 │
 ├── modules/
-│   ├── vpc/                            ← VPC, subnets, route tables, subnet tags
-│   ├── vpc-endpoints/                  ← All VPC interface endpoints
-│   ├── ecr-pull-through/               ← ECR pull-through cache rules
-│   ├── eks/                            ← EKS cluster + node group + OIDC
-│   ├── eks-addons/                     ← Core add-ons + Kubecost + autoscaler
-│   ├── alb-controller/                 ← AWS Load Balancer Controller
-│   ├── gitops/                         ← Argo CD + ECR OCI repo + root Application
-│   ├── github-actions-role/            ← OIDC IAM role for CI ECR push
-│   └── terraform-state-role/           ← Cross-account state IAM role
+│   ├── vpc/                   ← VPC, subnets, route tables, subnet tags
+│   ├── vpc-endpoints/         ← All VPC interface endpoints
+│   ├── ecr-pull-through/      ← ECR pull-through cache rules
+│   ├── eks/                   ← EKS cluster + node group + OIDC
+│   ├── eks-addons/            ← Core add-ons + Kubecost + autoscaler
+│   ├── alb-controller/        ← AWS Load Balancer Controller
+│   ├── gitops/                ← Argo CD + ECR OCI repo + root Application
+│   ├── github-actions-role/   ← OIDC IAM role for CI ECR push
+│   └── terraform-state-role/  ← Cross-account state IAM role
 │
 └── gitops/
     └── apps/
         └── dev/
-            ├── sample-app-app.yaml     ← Argo CD Application: sample-app
-            ├── postgresql-app.yaml     ← Argo CD Application: postgresql
-            ├── sample-app/             ← Raw YAML: Deployment, Service, Ingress
-            └── postgresql/             ← Raw YAML: Deployment, Service, Secret
-````
+            ├── sample-app-app.yaml    ← Argo CD Application: sample-app
+            ├── postgresql-app.yaml    ← Argo CD Application: postgresql
+            ├── sample-app/            ← Raw YAML: Deployment, Service, Ingress
+            └── postgresql/            ← Raw YAML: Deployment, Service, Secret
+```
 
 ---
 
 ## VPC Endpoints Required
 
-| Endpoint | Type | Purpose |
-|---|---|---|
-| `ec2` | Interface | Node bootstrap via nodeadm — nodes will not join without this |
-| `eks` | Interface | EKS control plane API |
-| `sts` | Interface | IRSA token exchange |
-| `ecr.api` | Interface | ECR authentication |
-| `ecr.dkr` | Interface | Image pulls |
-| `s3` | Gateway (free) | ECR image layer pulls |
-| `autoscaling` | Interface | Cluster Autoscaler |
-| `elasticloadbalancing` | Interface | ALB controller ELB API calls — required for ALB provisioning |
-| `wafv2` | Interface | ALB controller WAF state check — required or controller times out |
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ec2</code></td>
+<td>Interface</td>
+<td>Node bootstrap via nodeadm — nodes will not join without this</td>
+</tr>
+<tr>
+<td><code>eks</code></td>
+<td>Interface</td>
+<td>EKS control plane API</td>
+</tr>
+<tr>
+<td><code>sts</code></td>
+<td>Interface</td>
+<td>IRSA token exchange</td>
+</tr>
+<tr>
+<td><code>ecr.api</code></td>
+<td>Interface</td>
+<td>ECR authentication</td>
+</tr>
+<tr>
+<td><code>ecr.dkr</code></td>
+<td>Interface</td>
+<td>Image pulls</td>
+</tr>
+<tr>
+<td><code>s3</code></td>
+<td>Gateway (free)</td>
+<td>ECR image layer pulls</td>
+</tr>
+<tr>
+<td><code>autoscaling</code></td>
+<td>Interface</td>
+<td>Cluster Autoscaler</td>
+</tr>
+<tr>
+<td><code>elasticloadbalancing</code></td>
+<td>Interface</td>
+<td>ALB controller ELB API calls — required for ALB provisioning</td>
+</tr>
+<tr>
+<td><code>wafv2</code></td>
+<td>Interface</td>
+<td>ALB controller WAF state check — required or controller times out</td>
+</tr>
+</tbody>
+</table>
 
-Missing any of these causes silent failures — nodes will not join, images will not pull, or ALBs will not provision.
+**Missing any of these causes silent failures** — nodes will not join, images will not pull, or ALBs will not provision.
 
 ---
 
 ## ECR Pull Through Cache Prefixes
 
-| ECR Prefix | Upstream Registry | Used By |
-|---|---|---|
-| `registry-k8s-io` | registry.k8s.io | cluster-autoscaler |
-| `ecr-public` | public.ecr.aws | ALB controller, Kubecost |
-| `docker-hub` | docker.io | Grafana, Prometheus, Redis, nginx, postgres |
-| `quay` | quay.io | Argo CD, prometheus-config-reloader |
+<table>
+<thead>
+<tr>
+<th>ECR Prefix</th>
+<th>Upstream Registry</th>
+<th>Used By</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>registry-k8s-io</code></td>
+<td>registry.k8s.io</td>
+<td>cluster-autoscaler</td>
+</tr>
+<tr>
+<td><code>ecr-public</code></td>
+<td>public.ecr.aws</td>
+<td>ALB controller, Kubecost</td>
+</tr>
+<tr>
+<td><code>docker-hub</code></td>
+<td>docker.io</td>
+<td>Grafana, Prometheus, Redis, nginx, postgres</td>
+</tr>
+<tr>
+<td><code>quay</code></td>
+<td>quay.io</td>
+<td>Argo CD, prometheus-config-reloader</td>
+</tr>
+</tbody>
+</table>
 
 The node IAM role must have `ecr:CreateRepository` and `ecr:BatchImportUpstreamImage`. Without these, first pulls fail silently with `ImagePullBackOff`.
 
@@ -185,32 +290,92 @@ The node IAM role must have `ecr:CreateRepository` and `ecr:BatchImportUpstreamI
 
 ### What you are not paying for
 
-| Removed | Typical Monthly Cost |
-|---|---|
-| NAT Gateway (per AZ) | ~$35 plus data transfer |
-| Public ECR / Docker Hub data transfer | Variable |
-| Oversized always-on node groups | Significant at idle |
+<table>
+<thead>
+<tr>
+<th>Removed</th>
+<th>Typical Monthly Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NAT Gateway (per AZ)</td>
+<td>~$35 plus data transfer</td>
+</tr>
+<tr>
+<td>Public ECR / Docker Hub data transfer</td>
+<td>Variable</td>
+</tr>
+<tr>
+<td>Oversized always-on node groups</td>
+<td>Significant at idle</td>
+</tr>
+</tbody>
+</table>
 
 ### What replaces it
 
-| Replacement | Cost |
-|---|---|
-| VPC Interface Endpoints (9 endpoints) | ~$7/month each — fixed and predictable |
-| S3 Gateway Endpoint | Free |
-| ECR Pull Through Cache | Storage only after first pull |
-| Cluster Autoscaler | Free — runs on existing nodes |
+<table>
+<thead>
+<tr>
+<th>Replacement</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VPC Interface Endpoints (9 endpoints)</td>
+<td>~$7/month each — fixed and predictable</td>
+</tr>
+<tr>
+<td>S3 Gateway Endpoint</td>
+<td>Free</td>
+</tr>
+<tr>
+<td>ECR Pull Through Cache</td>
+<td>Storage only after first pull</td>
+</tr>
+<tr>
+<td>Cluster Autoscaler</td>
+<td>Free — runs on existing nodes</td>
+</tr>
+</tbody>
+</table>
 
 ---
 
 ## Environments
 
-| | Dev |
-|---|---|
-| Account ID | 435321828725 |
-| Region | ap-southeast-2 |
-| VPC CIDR | 10.0.0.0/16 |
-| Cluster | lean-dev |
-| State key prefix | `aws-lza/dev/` |
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Dev</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Account ID</td>
+<td>435321828725</td>
+</tr>
+<tr>
+<td>Region</td>
+<td>ap-southeast-2</td>
+</tr>
+<tr>
+<td>VPC CIDR</td>
+<td>10.0.0.0/16</td>
+</tr>
+<tr>
+<td>Cluster</td>
+<td>lean-dev</td>
+</tr>
+<tr>
+<td>State key prefix</td>
+<td><code>aws-lza/dev/</code></td>
+</tr>
+</tbody>
+</table>
 
 ---
 
@@ -233,21 +398,25 @@ terraform {
 }
 ```
 
-> **Do not pre-assume the dev role before `terraform apply`.** `providers.tf` handles role assumption itself. Pre-assuming causes double assumption and `AccessDenied`.
+> **⚠️ Do not pre-assume the dev role before `terraform apply`.** `providers.tf` handles role assumption itself. Pre-assuming causes double assumption and `AccessDenied`.
 
 ---
 
 ## Deployment Order
 
-Order is not optional. Hard dependencies exist between layers.
+**Order is not optional.** Hard dependencies exist between layers.
+
+### Step 1: VPC
 
 ```bash
-# STEP 1 — VPC
 cd environments/dev/vpc
 terraform init
 terraform apply -var-file=terraform.tfvars
+```
 
-# STEP 2 — EKS (targeted in order)
+### Step 2: EKS (targeted in order)
+
+```bash
 cd environments/dev/eks
 terraform init
 terraform apply -var-file=terraform.tfvars -target=module.ecr_pull_through
@@ -256,8 +425,11 @@ terraform apply -var-file=terraform.tfvars -target=module.eks_addons
 terraform apply -var-file=terraform.tfvars -target=module.alb_controller
 terraform apply -var-file=terraform.tfvars -target=module.gitops
 terraform apply -var-file=terraform.tfvars -target=module.github_actions_role
+```
 
-# STEP 3 — Push initial GitOps manifests to ECR OCI
+### Step 3: Push initial GitOps manifests to ECR OCI
+
+```bash
 VERSION=0.0.1
 mkdir -p /tmp/gitops-chart/templates
 cp -r gitops/apps/dev/* /tmp/gitops-chart/templates/
@@ -278,8 +450,11 @@ aws ecr get-login-password --region ap-southeast-2 \
 
 helm push /tmp/gitops-apps-dev-${VERSION}.tgz \
   oci://435321828725.dkr.ecr.ap-southeast-2.amazonaws.com
+```
 
-# STEP 4 — Create Argo CD ECR credentials secret
+### Step 4: Create Argo CD ECR credentials secret
+
+```bash
 ECR_TOKEN=$(aws ecr get-login-password --region ap-southeast-2)
 
 kubectl create secret generic ecr-credentials \
@@ -295,8 +470,11 @@ kubectl create secret generic ecr-credentials \
       "argocd.argoproj.io/secret-type=repository" \
       --dry-run=client -o yaml \
   | kubectl apply -f -
+```
 
-# STEP 5 — Verify
+### Step 5: Verify
+
+```bash
 kubectl get applications -n argocd
 kubectl get ingress -n sample-app -w
 
@@ -362,4 +540,3 @@ See `RUNBOOK.md` for a full account of every issue encountered during build and 
 ## License
 
 MIT
-````
