@@ -8,26 +8,86 @@ Hard-won notes from building and operating this repo. Read before you touch anyt
 
 ### VPC Endpoints (replaces NAT Gateway)
 
-| Endpoint | Purpose |
-|---|---|
-| `ec2` | Node bootstrap via nodeadm — **critical, nodes won't join without this** |
-| `eks` | Nodes → control plane API |
-| `sts` | IRSA token exchange |
-| `ecr.api` | ECR authentication |
-| `ecr.dkr` | Image pulls |
-| `s3` (Gateway, free) | ECR image layer pulls |
-| `autoscaling` | Cluster Autoscaler scale operations |
-| `elasticloadbalancing` | ALB controller → ELB API — **required for ALB provisioning** |
-| `wafv2` | ALB controller WAF state check — **required or ALB controller times out** |
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ec2</code></td>
+<td>Node bootstrap via nodeadm — <strong>critical, nodes won't join without this</strong></td>
+</tr>
+<tr>
+<td><code>eks</code></td>
+<td>Nodes → control plane API</td>
+</tr>
+<tr>
+<td><code>sts</code></td>
+<td>IRSA token exchange</td>
+</tr>
+<tr>
+<td><code>ecr.api</code></td>
+<td>ECR authentication</td>
+</tr>
+<tr>
+<td><code>ecr.dkr</code></td>
+<td>Image pulls</td>
+</tr>
+<tr>
+<td><code>s3</code> (Gateway, free)</td>
+<td>ECR image layer pulls</td>
+</tr>
+<tr>
+<td><code>autoscaling</code></td>
+<td>Cluster Autoscaler scale operations</td>
+</tr>
+<tr>
+<td><code>elasticloadbalancing</code></td>
+<td>ALB controller → ELB API — <strong>required for ALB provisioning</strong></td>
+</tr>
+<tr>
+<td><code>wafv2</code></td>
+<td>ALB controller WAF state check — <strong>required or ALB controller times out</strong></td>
+</tr>
+</tbody>
+</table>
 
 ### ECR Pull Through Cache Prefixes
 
-| Prefix | Upstream | Used By |
-|---|---|---|
-| `registry-k8s-io` | registry.k8s.io | cluster-autoscaler |
-| `ecr-public` | public.ecr.aws | ALB controller, Kubecost |
-| `docker-hub` | docker.io | Grafana, Prometheus, Redis, nginx, postgres |
-| `quay` | quay.io | Argo CD, prometheus-config-reloader |
+<table>
+<thead>
+<tr>
+<th>Prefix</th>
+<th>Upstream</th>
+<th>Used By</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>registry-k8s-io</code></td>
+<td>registry.k8s.io</td>
+<td>cluster-autoscaler</td>
+</tr>
+<tr>
+<td><code>ecr-public</code></td>
+<td>public.ecr.aws</td>
+<td>ALB controller, Kubecost</td>
+</tr>
+<tr>
+<td><code>docker-hub</code></td>
+<td>docker.io</td>
+<td>Grafana, Prometheus, Redis, nginx, postgres</td>
+</tr>
+<tr>
+<td><code>quay</code></td>
+<td>quay.io</td>
+<td>Argo CD, prometheus-config-reloader</td>
+</tr>
+</tbody>
+</table>
 
 ---
 
