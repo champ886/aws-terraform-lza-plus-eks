@@ -49,3 +49,12 @@ variable "security_vpc_cidr" {
   type        = string
   default     = "10.1.0.0/16"
 }
+
+# -----------------------------------------------
+# AVAILABILITY ZONES
+# -----------------------------------------------
+variable "availability_zones" {
+  description = "List of availability zones"
+  type        = list(string)
+  default     = ["ap-southeast-2a", "ap-southeast-2b"]
+}
